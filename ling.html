@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ling · 让一个角色，活成一颗星</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ════════════════════════════════════════════════════════════
+   ling · 共享设计系统  base.css
+   黑白 · 单色编辑风  (near-black 底 + 白/银灰层次，克制高级)
+   所有区块模板统一引用本文件，改一处全局生效。
+   ════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#000000;
+  --bg-2:#0A0A0A;
+  --surface:rgba(255,255,255,0.04);
+  --surface-strong:rgba(255,255,255,0.07);
+  --glass-border:rgba(255,255,255,0.12);
+  --line:rgba(255,255,255,0.10);
+  --line-2:rgba(255,255,255,0.18);
+  --text:#F4F4F5;
+  --text-2:#A6A6A8;
+  --text-3:#6B6B6E;
+  --accent:#FFFFFF;   /* 纯白 */
+  --accent-2:#D6D6D8; /* 银灰 */
+  --accent-3:#9A9A9C; /* 深灰 */
+  --grad:linear-gradient(120deg,#FFFFFF 0%,#E4E4E6 50%,#B8B8BB 100%);
+  --grad-soft:linear-gradient(120deg,rgba(255,255,255,.14),rgba(255,255,255,.06));
+  --serif:'Noto Serif SC',serif;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:'Inter',ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:var(--sans); color:var(--text); line-height:1.65;
+  background:var(--bg); overflow-x:hidden; -webkit-font-smoothing:antialiased; cursor:default;}
+::selection{background:rgba(255,255,255,.85); color:#000000;}
+::-webkit-scrollbar{width:10px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22); border-radius:10px; border:2px solid var(--bg);}
+
+/* 极光流动背景 */
+.aurora{position:fixed; inset:0; z-index:-2; overflow:hidden; background:linear-gradient(180deg,var(--bg) 0%,var(--bg-2) 100%);}
+.aurora::before,.aurora::after{content:''; position:absolute; inset:-25%;}
+.aurora::before{
+  background:
+    radial-gradient(38% 46% at 18% 22%, rgba(255,255,255,.06), transparent 62%),
+    radial-gradient(44% 44% at 82% 18%, rgba(255,255,255,.045), transparent 62%),
+    radial-gradient(48% 48% at 62% 82%, rgba(200,200,205,.04), transparent 62%),
+    radial-gradient(42% 42% at 24% 76%, rgba(255,255,255,.05), transparent 62%);
+  filter:blur(40px); animation:drift 28s ease-in-out infinite alternate;
+}
+.aurora::after{
+  background:
+    radial-gradient(34% 34% at 72% 32%, rgba(255,255,255,.04), transparent 62%),
+    radial-gradient(40% 40% at 30% 58%, rgba(255,255,255,.03), transparent 62%);
+  filter:blur(52px); animation:drift2 36s ease-in-out infinite alternate;
+}
+@keyframes drift{0%{transform:translate(0,0) scale(1)}100%{transform:translate(4%,3%) scale(1.1)}}
+@keyframes drift2{0%{transform:translate(0,0) scale(1.02)}100%{transform:translate(-3%,-4%) scale(1.06)}}
+.grain{position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.035;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* 全局背景粒子层（铺满整页视口，置于内容之下） */
+#motes{position:fixed; inset:0; z-index:0; pointer-events:none;}
+main,.section,.starwrap,.cta,.footer,.hero{position:relative; z-index:1;}
+
+/* 玻璃导航 */
+.nav{position:fixed; top:0; left:0; right:0; z-index:100;
+  background:rgba(0,0,0,0.55); backdrop-filter:saturate(160%) blur(22px); -webkit-backdrop-filter:saturate(160%) blur(22px);
+  border-bottom:1px solid transparent; transition:border-color .3s, background .3s;}
+.nav.scrolled{border-bottom-color:var(--line); background:rgba(0,0,0,0.82);}
+.nav-inner{max-width:1180px; margin:0 auto; height:64px; padding:0 28px; display:flex; align-items:center; justify-content:space-between;}
+.logo{display:flex; align-items:center; gap:11px; text-decoration:none;}
+.logo .mark{width:30px; height:30px; border-radius:9px; display:grid; place-items:center; font-family:var(--serif); font-size:16px; font-weight:600; color:#000000;
+  background:var(--grad); box-shadow:0 4px 14px rgba(255,255,255,.18);}
+.logo .word{font-size:19px; font-weight:600; letter-spacing:-.01em; color:var(--text);}
+.logo .word em{font-style:normal; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
+.nav-links{display:flex; align-items:center; gap:2px;}
+.nav-link{font-size:13.5px; color:var(--text-2); text-decoration:none; padding:9px 15px; border-radius:8px; transition:.2s; font-weight:450;}
+.nav-link:hover{color:var(--text); background:rgba(255,255,255,.06);}
+.nav-cta{font-size:13.5px; font-weight:600; color:#000000; text-decoration:none; padding:9px 20px; border-radius:9px; margin-left:6px;
+  background:var(--grad); box-shadow:0 6px 20px rgba(255,255,255,.16); transition:transform .2s, box-shadow .2s;}
+.nav-cta:hover{transform:translateY(-1px); box-shadow:0 10px 28px rgba(255,255,255,.24);}
+
+/* 通用按钮 */
+.btn{display:inline-flex; align-items:center; gap:10px; text-decoration:none; cursor:pointer; border:none;
+  font-family:var(--sans); font-size:15px; font-weight:600; transition:all .25s cubic-bezier(.2,.7,.2,1); position:relative; overflow:hidden;}
+.btn-solid{padding:15px 30px; border-radius:11px; background:var(--grad); color:#000000; box-shadow:0 10px 30px rgba(255,255,255,.14);}
+.btn-solid:hover{transform:translateY(-2px); box-shadow:0 16px 42px rgba(255,255,255,.22);}
+.btn-solid::after{content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent); transform:translateX(-100%); transition:transform .6s;}
+.btn-solid:hover::after{transform:translateX(100%);}
+.btn-ghost{padding:15px 24px; border-radius:11px; color:var(--text); background:var(--surface-strong); border:1px solid var(--glass-border);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);}
+.btn-ghost:hover{border-color:var(--line-2); transform:translateY(-1px); box-shadow:0 8px 24px rgba(255,255,255,.06);}
+.btn .arrow{transition:transform .25s;}
+.btn:hover .arrow{transform:translateX(3px);}
+
+/* 玻璃卡 */
+.glass{background:var(--surface); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--glass-border); box-shadow:0 18px 50px rgba(0,0,0,.45);}
+
+/* reveal 动效 */
+.reveal{opacity:0; transform:translateY(26px); transition:opacity .7s, transform .7s cubic-bezier(.2,.7,.2,1);}
+.reveal.in{opacity:1; transform:none;}
+
+/* 通用区块间距 */
+.section{padding:118px 0; position:relative;}
+.wrap{max-width:1180px; margin:0 auto; padding:0 28px;}
+.section-head{max-width:720px; margin-bottom:64px;}
+.eyebrow{display:inline-flex; align-items:center; gap:8px; font-size:12px; letter-spacing:.18em; text-transform:uppercase; font-weight:600;
+  background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; margin-bottom:18px;}
+.section-head h2{font-family:var(--serif); font-weight:500; font-size:clamp(30px,4.4vw,46px); letter-spacing:-.02em; line-height:1.18; color:var(--text);}
+.section-head p{margin-top:16px; font-size:16px; color:var(--text-2); line-height:1.85;}
+
+</style>
+<style>
+  /* ══ HERO ══ */
+  .hero{position:relative; min-height:100vh; display:flex; flex-direction:column; justify-content:center; padding:130px 0 90px; overflow:hidden;}
+  .hero-inner{position:relative; z-index:2; max-width:1080px; margin:0 auto; padding:0 28px; text-align:center;}
+  .hero-eyebrow{display:inline-flex; align-items:center; gap:10px; margin-bottom:32px; font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--text-2);
+    padding:7px 15px 7px 13px; border-radius:100px; background:var(--surface-strong); border:1px solid var(--glass-border); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    opacity:0; animation:fadeUp .8s cubic-bezier(.2,.7,.2,1) .1s forwards;}
+  .hero-eyebrow .dot{width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px var(--accent); animation:pulse 2.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1; transform:scale(1)}50%{opacity:.5; transform:scale(.8)}}
+  .hero h1{font-family:var(--serif); font-weight:500; letter-spacing:-.02em; line-height:1.14; font-size:clamp(40px,6.6vw,78px); max-width:16ch; margin:0 auto 28px; opacity:0; animation:fadeUp .9s cubic-bezier(.2,.7,.2,1) .3s forwards;}
+  .hero h1 .em{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero h1 .it{font-style:italic; font-weight:400;}
+  .hero-sub{font-size:18px; color:var(--text-2); max-width:560px; line-height:1.85; margin:0 auto 42px; opacity:0; animation:fadeUp .9s cubic-bezier(.2,.7,.2,1) .5s forwards;}
+  .hero-actions{display:flex; gap:14px; flex-wrap:wrap; align-items:center; justify-content:center; opacity:0; animation:fadeUp .9s cubic-bezier(.2,.7,.2,1) .7s forwards;}
+  .hero-meta{position:relative; z-index:2; margin-top:62px; display:flex; gap:46px; flex-wrap:wrap; justify-content:center; opacity:0; animation:fadeUp .9s cubic-bezier(.2,.7,.2,1) .9s forwards;}
+  .hero-meta .hm{text-align:center;}
+  .hero-meta .hm b{display:block; font-family:var(--serif); font-size:30px; font-weight:500; letter-spacing:-.01em; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .hero-meta .hm span{font-size:12.5px; color:var(--text-3); letter-spacing:.04em; margin-top:6px; display:block;}
+  .scroll-cue{position:absolute; left:0; right:0; bottom:30px; z-index:2; display:flex; justify-content:center; opacity:0; animation:fadeUp .9s cubic-bezier(.2,.7,.2,1) 1.1s forwards;}
+  .scroll-cue .bar{width:1px; height:38px; background:linear-gradient(var(--text-3),transparent); position:relative; overflow:hidden;}
+  .scroll-cue .bar::after{content:''; position:absolute; top:-38px; left:0; width:1px; height:38px; background:var(--accent); animation:cue 2.4s ease-in-out infinite;}
+  @keyframes cue{0%{transform:translateY(0)}100%{transform:translateY(76px)}}
+  @keyframes fadeUp{to{opacity:1; transform:none;}}
+  @media (max-width:720px){.hero-meta{gap:28px;}.hero-meta .hm b{font-size:24px;}}
+
+  /* ══ MARQUEE ══ */
+  .marquee{border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:var(--surface-strong); overflow:hidden; padding:16px 0; white-space:nowrap; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);}
+  .mq-track{display:inline-flex; animation:mq 38s linear infinite;}
+  .marquee:hover .mq-track{animation-play-state:paused;}
+  @keyframes mq{to{transform:translateX(-50%);}}
+  .mq-track span{font-size:13px; color:var(--text-3); letter-spacing:.06em; padding:0 26px; display:inline-flex; align-items:center; gap:26px;}
+  .mq-track span i{font-style:normal; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; font-size:9px;}
+
+  /* ══ LIFECYCLE ══ */
+  .life{position:relative; max-width:840px; margin:0 auto;}
+  .life-line{position:absolute; left:31px; top:12px; bottom:12px; width:2px; background:linear-gradient(180deg,var(--accent),var(--accent-2) 50%,var(--accent-3)); opacity:.5;}
+  .stage{position:relative; display:flex; gap:30px; padding:0 0 60px;}
+  .stage:last-child{padding-bottom:0;}
+  .stage-dot{flex:0 0 63px; height:63px; border-radius:16px; display:grid; place-items:center; position:relative; z-index:2;
+    font-family:var(--serif); font-size:22px; font-weight:500; color:var(--accent);
+    background:var(--surface-strong); border:1px solid var(--glass-border); box-shadow:0 0 0 6px var(--bg),0 0 26px rgba(255,255,255,.18);}
+  .stage:last-child .stage-dot{background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(230,230,234,.1)); color:var(--accent-2);}
+  .stage-body{flex:1; padding-top:8px;}
+  .stage-tag{font-size:11px; letter-spacing:.16em; text-transform:uppercase; font-weight:600; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; margin-bottom:8px;}
+  .stage-body h3{font-family:var(--serif); font-size:25px; font-weight:500; letter-spacing:-.01em; margin-bottom:12px;}
+  .stage-body h3 em{font-style:normal; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .stage:last-child .stage-body h3 em{background:linear-gradient(120deg,var(--accent-2),var(--accent-3)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .stage-body p{font-size:15px; color:var(--text-2); line-height:1.85; max-width:620px;}
+  .chips{display:flex; flex-wrap:wrap; gap:9px; margin-top:16px;}
+  .chip{font-size:12px; color:var(--text-2); padding:6px 13px; border-radius:100px; background:var(--surface-strong); border:1px solid var(--glass-border); transition:.2s;}
+  .chip:hover{border-color:rgba(255,255,255,.4); color:var(--accent); transform:translateY(-1px);}
+  @media(max-width:640px){.life-line{left:20px}.stage{gap:18px}.stage-dot{flex-basis:44px;height:44px;font-size:18px}}
+
+  /* ══ FEATURE GROUPS ══ */
+  .groups{display:flex; flex-direction:column; gap:74px;}
+  .ghead{display:flex; align-items:center; gap:15px; margin-bottom:26px; flex-wrap:wrap;}
+  .ghead .gi{width:46px; height:46px; border-radius:13px; display:grid; place-items:center; font-size:23px; color:var(--accent); background:var(--grad-soft); border:1px solid rgba(255,255,255,.18);}
+  .ghead h3{font-family:var(--serif); font-size:25px; font-weight:500; letter-spacing:-.01em;}
+  .ghead .gsub{font-size:13.5px; color:var(--text-3); margin-left:auto;}
+  .feat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(248px,1fr)); gap:18px;}
+  .feat{position:relative; padding:30px 26px; border-radius:18px; overflow:hidden; transition:transform .3s, box-shadow .3s; perspective:800px; background:var(--surface); backdrop-filter:blur(24px) saturate(180%); -webkit-backdrop-filter:blur(24px) saturate(180%); border:1px solid var(--glass-border); box-shadow:0 12px 44px rgba(40,60,120,.10);}
+  .feat:hover{transform:translateY(-4px); box-shadow:0 22px 60px rgba(40,60,120,.14);}
+  .feat-glow{position:absolute; inset:0; background:radial-gradient(circle at var(--gx,50%) var(--gy,50%), rgba(255,255,255,.10), transparent 55%); opacity:0; transition:opacity .3s; pointer-events:none;}
+  .feat:hover .feat-glow{opacity:1;}
+  .feat-ic{width:44px; height:44px; border-radius:12px; display:grid; place-items:center; margin-bottom:18px; font-size:23px; color:var(--accent); background:var(--grad-soft); border:1px solid rgba(255,255,255,.18);}
+  .feat h3{font-size:18px; font-weight:600; letter-spacing:-.01em; margin-bottom:9px;}
+  .feat p{font-size:14px; color:var(--text-2); line-height:1.78;}
+  .feat .ftag{position:absolute; top:16px; right:16px; font-size:9.5px; font-family:var(--mono); color:var(--accent); background:var(--grad-soft); border:1px solid rgba(255,255,255,.2); padding:3px 9px; border-radius:100px; letter-spacing:.06em;}
+
+  /* ══ STARMAP ══ */
+  .starwrap{background:linear-gradient(180deg,transparent,rgba(255,255,255,.04),transparent);}
+  .star-grid{display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center;}
+  .star-copy h2{margin-bottom:16px;}
+  .star-copy .lead{font-size:15.5px; color:var(--text-2); line-height:1.9; margin-bottom:24px;}
+  .star-list{display:flex; flex-direction:column; gap:13px;}
+  .star-list .sl{display:flex; gap:13px; align-items:flex-start;}
+  .sl .b{flex:0 0 8px; height:8px; border-radius:50%; margin-top:8px; background:var(--accent); box-shadow:0 0 10px rgba(255,255,255,.6);}
+  .sl.gold .b{background:var(--accent-2); box-shadow:0 0 10px rgba(230,230,234,.6);}
+  .sl div b{display:block; font-size:14.5px; font-weight:700; margin-bottom:2px;}
+  .sl div span{font-size:13px; color:var(--text-2);}
+  .star-viz{position:relative; border:1px solid var(--glass-border); border-radius:20px; background:radial-gradient(120% 120% at 50% 0%, rgba(255,255,255,.10) 0%, rgba(0,0,0,0) 60%); aspect-ratio:1/1; max-width:460px; margin:0 auto; width:100%; overflow:hidden;}
+  #constellation{position:absolute; inset:0; width:100%; height:100%;}
+  .star-viz .cap{position:absolute; left:0; right:0; bottom:0; padding:13px 18px; font-size:11px; color:var(--text-3); letter-spacing:.05em; background:linear-gradient(180deg,transparent,rgba(0,0,0,.85)); display:flex; justify-content:space-between; font-family:var(--mono);}
+  .star-viz .cap i{font-style:normal; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; font-weight:600;}
+  @media(max-width:900px){.star-grid{grid-template-columns:1fr; gap:40px}}
+
+  /* ══ PRICING ══ */
+  .pgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:18px; max-width:880px; margin:0 auto;}
+  .pcard{background:var(--surface); backdrop-filter:blur(24px) saturate(180%); -webkit-backdrop-filter:blur(24px) saturate(180%); border:1px solid var(--glass-border); border-radius:20px; padding:36px 30px; text-align:center; position:relative; transition:all .3s; box-shadow:0 12px 44px rgba(40,60,120,.10); display:flex; flex-direction:column;}
+  .pcard:hover{transform:translateY(-5px); box-shadow:0 16px 48px rgba(40,60,120,.16);}
+  .pcard.feat{border-color:rgba(255,255,255,.35); background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(230,230,234,.05)); box-shadow:0 0 60px rgba(255,255,255,.12);}
+  .pcard .pb{position:absolute; top:-13px; left:50%; transform:translateX(-50%); background:var(--grad); color:#000000; font-size:11px; font-weight:600; padding:5px 16px; border-radius:50px; letter-spacing:.04em; white-space:nowrap;}
+  .pcard .pn{font-size:16px; font-weight:600; margin-bottom:2px;}
+  .pcard .pd{font-size:12px; color:var(--text-3); margin-bottom:14px;}
+  .pcard .pa{font-family:var(--serif); font-size:42px; font-weight:500; letter-spacing:-.01em; margin-bottom:20px;}
+  .pcard .pa sub{font-size:15px; font-weight:400; color:var(--text-2); font-family:var(--sans);}
+  .pcard ul{list-style:none; text-align:left; font-size:13.5px; color:var(--text-2); flex:1; margin-bottom:22px;}
+  .pcard ul li{padding:6px 0; display:flex; gap:10px; align-items:baseline;}
+  .pcard ul li.on::before{content:'✓'; color:var(--accent); font-weight:700;}
+  .pcard ul li.off{color:var(--text-3);}
+  .pcard ul li.off::before{content:'🔒'; font-size:10px;}
+  .pcard ul li.star{color:var(--accent-2); font-weight:600;}
+  .pcard ul li.star::before{content:'⭐'; font-size:10px;}
+  .pcard .pbtn{display:block; text-align:center; text-decoration:none; padding:13px; border-radius:11px; font-size:14px; font-weight:600; transition:all .22s;}
+  .pcard .pbtn.solid{background:var(--grad); color:#000000;}
+  .pcard .pbtn.solid:hover{transform:translateY(-1px); box-shadow:0 10px 30px rgba(255,255,255,.34);}
+  .pcard .pbtn.outline{border:1px solid var(--line-2); color:var(--text); background:var(--surface-strong);}
+  .pcard .pbtn.outline:hover{border-color:var(--text-3);}
+
+  /* ══ CTA ══ */
+  .cta{position:relative; padding:120px 0; text-align:center; overflow:hidden;}
+  .cta-glow{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:680px; height:680px; max-width:92vw; max-height:92vw; border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.14), rgba(230,230,234,.08) 40%, transparent 68%); pointer-events:none;}
+  .cta-inner{position:relative; z-index:1; max-width:680px; margin:0 auto; padding:0 28px;}
+  .cta h2{font-family:var(--serif); font-weight:500; font-size:clamp(34px,5.4vw,58px); line-height:1.16; letter-spacing:-.02em; margin-bottom:20px;}
+  .cta h2 .em{background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; font-style:italic;}
+  .cta p{font-size:17px; color:var(--text-2); margin-bottom:36px;}
+
+  /* ══ FOOTER ══ */
+  .footer{border-top:1px solid var(--line); padding:38px 0;}
+  .footer-inner{display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap;}
+  .footer .copy{font-size:13px; color:var(--text-3); display:flex; align-items:center; gap:14px;}
+  .footer-links{display:flex; gap:26px;}
+  .footer-links a{font-size:13px; color:var(--text-2); text-decoration:none; transition:color .2s;}
+  .footer-links a:hover{color:var(--text);}
+
+  /* ══ MODAL ══ */
+  .overlay{display:none; position:fixed; inset:0; z-index:999; background:rgba(0,0,0,.65); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:20px;}
+  .overlay.open{display:flex;}
+  .mbox{background:var(--surface-strong); border:1px solid var(--glass-border); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-radius:20px; padding:34px 28px; max-width:360px; width:100%; box-shadow:0 28px 90px rgba(0,0,0,.6); animation:pop .3s cubic-bezier(.2,.7,.2,1);}
+  @keyframes pop{from{opacity:0; transform:translateY(16px) scale(.97)}to{opacity:1; transform:none}}
+  .mbox h3{font-family:var(--serif); font-size:20px; font-weight:500; margin-bottom:5px;}
+  .mbox .ms{font-size:13px; color:var(--text-3); margin-bottom:22px;}
+  .mlink{display:flex; align-items:center; gap:15px; padding:15px 17px; border-radius:13px; text-decoration:none; transition:all .2s; margin-bottom:11px;}
+  .mlink.dl{background:var(--grad-soft); border:1px solid rgba(255,255,255,.2);}
+  .mlink.by{background:var(--surface); border:1px solid var(--glass-border);}
+  .mlink:hover{transform:translateY(-2px); box-shadow:0 8px 24px rgba(255,255,255,.10);}
+  .mlink .ic{font-size:24px;}
+  .mlink .tt{font-size:15px; font-weight:600; color:var(--text);}
+  .mlink.dl .tt{color:var(--accent);}
+  .mlink .ht{font-size:12px; color:var(--text-3);}
+  .mclose{display:block; width:100%; margin-top:14px; padding:12px; background:transparent; border:none; color:var(--text-3); font-size:14px; cursor:pointer; font-family:var(--sans);}
+  .mclose:hover{color:var(--text);}
+
+  @media(max-width:760px){.feat-grid,.price-grid,.star-grid{grid-template-columns:1fr;}.ghead .gsub{margin-left:0;width:100%;}}
+</style>
+</head>
+<body>
+<div class="aurora"></div>
+<div class="grain"></div>
+<canvas id="motes"></canvas>
+
+<nav class="nav" id="nav"><div class="nav-inner">
+  <a href="#" class="logo"><span class="mark">ling</span><span class="word">ling</span></a>
+  <div class="nav-links"><a href="#life" class="nav-link">一生</a><a href="#feat" class="nav-link">能力</a><a href="#star" class="nav-link">星图</a><a href="#price" class="nav-link">价格</a><a href="/thanks/" target="_blank" rel="noopener" data-tw class="nav-link">感谢墙</a></div>
+  <a href="#" class="nav-cta" onclick="showModal();return false;">获取</a>
+</div></nav>
+
+<!-- ═ BLOCK: HERO ═ -->
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow"><span class="dot"></span>v1.1.0 · 领地系统已上线</div>
+    <h1>让一个角色，<br>在对话里<span class="em it">活成一颗星</span></h1>
+    <p class="hero-sub">把素材丢进去，AI 铸出一个活的角色；和它对话，看它长出独有的性格；给它一个家，让它在你的世界里生活；最终，它的一切都会沉淀成一张只属于你们的星图。</p>
+    <div class="hero-actions">
+      <a href="#" class="btn btn-solid" onclick="showModal();return false;">📦 下载使用 <span class="arrow">→</span></a>
+      <a href="#life" class="btn btn-ghost">看看角色的一生 ↓</a>
+    </div>
+    <div class="hero-meta">
+      <div class="hm"><b>5 层</b><span>记忆引擎</span></div>
+      <div class="hm"><b>1:72</b><span>世界时间流速</span></div>
+      <div class="hm"><b>4 季</b><span>领地昼夜演化</span></div>
+      <div class="hm"><b>∞</b><span>特质自由生长</span></div>
+    </div>
+  </div>
+  <div class="scroll-cue"><div class="bar"></div></div>
+</header>
+
+<!-- ═ BLOCK: MARQUEE ═ -->
+<div class="marquee"><div class="mq-track">
+  <span>角色铸造 <i>✦</i> 动态特质 <i>✦</i> 五层记忆 <i>✦</i> 成长星图 <i>✦</i> 领地演化 <i>✦</i> 世界探索 <i>✦</i> 多身份切换 <i>✦</i> 云端同步 <i>✦</i> 语义检索 <i>✦</i> 旅行背包 <i>✦</i> 小说铸世界 <i>✦</i> 主题配色 <i>✦</i></span>
+  <span>角色铸造 <i>✦</i> 动态特质 <i>✦</i> 五层记忆 <i>✦</i> 成长星图 <i>✦</i> 领地演化 <i>✦</i> 世界探索 <i>✦</i> 多身份切换 <i>✦</i> 云端同步 <i>✦</i> 语义检索 <i>✦</i> 旅行背包 <i>✦</i> 小说铸世界 <i>✦</i> 主题配色 <i>✦</i></span>
+</div></div>
+
+<!-- ═ BLOCK: LIFECYCLE ═ -->
+<section class="section" id="life"><div class="wrap">
+  <div class="section-head reveal" style="margin-left:auto;margin-right:auto;text-align:center;">
+    <div class="eyebrow" style="justify-content:center;">LIFECYCLE · 一个角色的一生</div><h2>从一段素材，到一颗星</h2>
+    <p>ling 里的角色不是一次性设定好的模板，而是沿着一条完整的生命线，慢慢长成的。</p>
+  </div>
+  <div class="life">
+    <div class="life-line"></div>
+
+    <div class="stage reveal">
+      <div class="stage-dot">01</div>
+      <div class="stage-body">
+        <div class="stage-tag">FORGE · 诞生</div>
+        <h3><em>铸造</em>——丢素材进去，AI 直接出成品</h3>
+        <p>一段人设、一篇小说、一份设定集，都能被 AI 自动拆解、提炼，铸成一个有血有肉的角色，或一整个有地点、有人物、有势力、有体系的世界。</p>
+        <div class="chips"><span class="chip">🔨 角色铸造</span><span class="chip">🔨 世界铸造 · 小说→世界</span><span class="chip">自动提取地点 / 人物 / 势力 / 体系</span></div>
+      </div>
+    </div>
+
+    <div class="stage reveal">
+      <div class="stage-dot">02</div>
+      <div class="stage-body">
+        <div class="stage-tag">GROW · 生长</div>
+        <h3><em>对话</em>——特质随对话自由生长</h3>
+        <p>聊天中涌现的新特质会自动沉淀为角色的一部分；久未触及的特质自然休眠，被重新提起时又被唤醒。每一次对话，都在悄悄改写这个角色。</p>
+        <div class="chips"><span class="chip">动态特质维度</span><span class="chip">五层记忆 · 场景→事件→叙事弧</span><span class="chip">多身份切换</span><span class="chip">旧角色自动迁移</span></div>
+      </div>
+    </div>
+
+    <div class="stage reveal">
+      <div class="stage-dot">03</div>
+      <div class="stage-body">
+        <div class="stage-tag">LIVE · 生活</div>
+        <h3><em>世界</em>——你不在的时候，它也在生活</h3>
+        <p>给角色一个家。领地里住着你的角色们，你离开时它们按自己的节奏生活、演化；你回来时，世界已经走过了四季，等你听它们讲这段时间发生的事。</p>
+        <div class="chips"><span class="chip">领地系统</span><span class="chip">住户自主生活</span><span class="chip">1:72 时间流速 · 四季昼夜</span><span class="chip">回家近况回顾</span><span class="chip">旅行背包 · 跨世界同行</span></div>
+      </div>
+    </div>
+
+    <div class="stage reveal">
+      <div class="stage-dot">04</div>
+      <div class="stage-body">
+        <div class="stage-tag">REMEMBER · 铭记</div>
+        <h3><em>成星</em>——一切沉淀为一张星图</h3>
+        <p>角色走过的路、说过的话、形成的性格，最终都会凝聚成一张力导向的成长星图。每个节点都是一段记忆，每条连线都是一次因果。换一部手机，灵魂也带得走。</p>
+        <div class="chips"><span class="chip">成长星图</span><span class="chip">语义检索 · 记得你说过的原话</span><span class="chip">角色灵魂 · 跨世界成长</span><span class="chip">云端备份恢复</span></div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ═ BLOCK: FEATURES ═ -->
+<section class="section" id="feat"><div class="wrap">
+  <div class="section-head reveal"><div class="eyebrow">CAPABILITIES · 核心能力</div><h2>不止是聊天</h2><p>角色、记忆、世界、体验，四个维度共同撑起一个会成长的 AI 伴侣。</p></div>
+  <div class="groups">
+
+    <div class="reveal"><div class="ghead"><span class="gi">🎭</span><h3>角色</h3><span class="gsub">从铸造到生长</span></div>
+      <div class="feat-grid">
+        <div class="feat glass"><div class="feat-glow"></div><span class="ftag">v1.1</span><div class="feat-ic">🔨</div><h3>角色铸造</h3><p>丢素材进去，AI 直接出成品。两步并行解析，长文本也能完整吃下。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><span class="ftag">v1.1</span><div class="feat-ic">🌱</div><h3>动态特质维度</h3><p>特质不再被固定框架限制，随对话自由生长、休眠、唤醒，数量没有上限。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🪞</div><h3>多身份切换</h3><p>一个角色可以有多重身份，在不同场合展现不同的面貌。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">✨</div><h3>角色灵魂</h3><p>冒险与经历会内化为角色的一部分，跨世界持续成长。</p></div>
+      </div>
+    </div>
+
+    <div class="reveal"><div class="ghead"><span class="gi">🧠</span><h3>记忆</h3><span class="gsub">记得住，也想得起来</span></div>
+      <div class="feat-grid">
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🗂️</div><h3>五层记忆系统</h3><p>场景 → 事件 → 叙事弧，每次对话自动沉淀为有层次、有因果的记忆结构。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🔍</div><h3>语义检索</h3><p>向量化语义召回，角色会在恰当的时刻，自然呼应你曾说过的原话。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🕸️</div><h3>成长星图</h3><p>力导向节点网络，把角色的特质与记忆可视化，点开就是一段故事。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">☁️</div><h3>云端备份</h3><p>本地优先，云端随时上传恢复，换手机不丢数据。</p></div>
+      </div>
+    </div>
+
+    <div class="reveal"><div class="ghead"><span class="gi">🗺️</span><h3>世界</h3><span class="gsub">给角色一个家</span></div>
+      <div class="feat-grid">
+        <div class="feat glass"><div class="feat-glow"></div><span class="ftag">v1.1</span><div class="feat-ic">🏡</div><h3>领地系统</h3><p>你的专属空间。邀请角色入住，它们在你不在时自主生活。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><span class="ftag">v1.1</span><div class="feat-ic">📖</div><h3>世界铸造</h3><p>丢小说或设定进去，AI 自动提取地点、人物、势力、体系，生成可探索的世界。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">⏳</div><h3>世界演化</h3><p>1:72 时间流速，四季与昼夜流转，回家即见近况回顾。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🎒</div><h3>旅行背包</h3><p>物品与同伴跨世界携带，去别人的世界串门，也欢迎别人来做客。</p></div>
+      </div>
+    </div>
+
+    <div class="reveal"><div class="ghead"><span class="gi">🎛️</span><h3>体验</h3><span class="gsub">顺手，也悦目</span></div>
+      <div class="feat-grid">
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🎨</div><h3>主题配色</h3><p>深色山海、淡彩智慧、午夜金、锦绣宝相，四套皮肤随心切换。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">📥</div><h3>聊天记录导入</h3><p>支持 txt 与 JSON，粘贴或文件导入，AI 自动解析角色与对话。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">⏰</div><h3>时间 · 天气 · 搜索</h3><p>AI 可以告诉你现在几点、查询城市天气、搜索网络信息。</p></div>
+        <div class="feat glass"><div class="feat-glow"></div><div class="feat-ic">🔌</div><h3>多模型 · 技能</h3><p>用自己的 API Key，接入多家大模型，还能挂载 MCP 技能扩展能力。</p></div>
+      </div>
+    </div>
+
+  </div>
+</div></section>
+
+<!-- ═ BLOCK: STARMAP ═ -->
+<div class="starwrap" id="star"><section class="section"><div class="wrap">
+  <div class="section-head reveal"><div class="eyebrow">SOUL MAP · 成长星图</div><h2>看得见的灵魂</h2><p>星图不是装饰，是角色活过的证据。每一次对话沉淀成节点，每一次因果连成线，久而久之，你会看到一张独一无二的星图——那是只属于你们两个人的宇宙。</p></div>
+  <div class="star-grid">
+    <div class="star-copy reveal">
+      <div class="star-list">
+        <div class="sl"><span class="b"></span><div><b>特质节点</b><span>角色长出的每一种性格，都是一颗会发光的星。</span></div></div>
+        <div class="sl"><span class="b"></span><div><b>记忆节点</b><span>场景、事件、叙事弧层层聚合，点开就是一段往事。</span></div></div>
+        <div class="sl gold"><span class="b"></span><div><b>灵魂连线</b><span>跨世界的经历彼此勾连，角色的成长有迹可循。</span></div></div>
+      </div>
+    </div>
+    <div class="star-viz glass reveal"><canvas id="constellation"></canvas><div class="cap"><span>SOUL.GRAPH — 实时演算</span><i>✦ 已点亮 128 颗记忆</i></div></div>
+  </div>
+</div></section></div>
+
+<!-- ═ BLOCK: PRICING ═ -->
+<section class="section" id="price"><div class="wrap">
+  <div class="section-head reveal" style="margin-left:auto;margin-right:auto;text-align:center;">
+    <div class="eyebrow" style="justify-content:center;">PRICING · 价格</div><h2>一次解锁，永久使用</h2><p>免费版完整聊天，解锁版开放全部高级能力。没有订阅，没有套路。</p>
+  </div>
+  <div class="pgrid reveal">
+    <div class="pcard">
+      <div class="pn">免费版</div><div class="pd">先聊起来</div>
+      <div class="pa"><sub>¥</sub>0</div>
+      <ul>
+        <li class="on">无限对话</li><li class="on">多角色创建</li><li class="on">多身份切换</li><li class="on">角色设定编辑</li><li class="on">导入聊天记录</li><li class="on">时间 · 天气 · 搜索</li>
+        <li class="off">五层记忆引擎</li><li class="off">成长星图</li><li class="off">云端备份</li>
+      </ul>
+      <a href="#" class="pbtn outline" onclick="showModal();return false;">开始使用</a>
+    </div>
+    <div class="pcard feat">
+      <div class="pb">推荐</div>
+      <div class="pn">解锁版</div><div class="pd">完整的灵魂</div>
+      <div class="pa"><sub>¥</sub>9.9</div>
+      <ul>
+        <li class="on">免费版全部功能</li><li class="on">五层记忆引擎</li><li class="on">动态特质维度</li><li class="on">成长星图</li><li class="on">语义检索</li><li class="on">云端备份恢复</li><li class="on">角色持续演化</li>
+        <li class="star">一次付费 · 永久有效</li>
+      </ul>
+      <a href="#" class="pbtn solid" onclick="showModal();return false;">升级解锁版</a>
+    </div>
+    <div class="pcard">
+      <div class="pn">支持者</div><div class="pd">一起把 ling 养大</div>
+      <div class="pa"><sub>¥</sub>29.9</div>
+      <ul>
+        <li class="on">解锁版全部功能</li><li class="on">名字登上感谢墙</li><li class="on">纪念墙永久留名</li><li class="on">一对一反馈通道</li>
+        <li class="star">支持独立开发持续迭代</li>
+      </ul>
+      <a href="#" class="pbtn outline" onclick="showModal();return false;">成为支持者</a>
+    </div>
+  </div>
+</div></section>
+
+<!-- ═ BLOCK: CTA ═ -->
+<section class="cta"><div class="cta-glow"></div><div class="cta-inner">
+  <h2 class="reveal">让一个角色，<span class="em">记住你</span>。</h2>
+  <p class="reveal">现在开始，铸造属于你的第一颗星。</p>
+  <div class="reveal" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;"><a href="#" class="btn btn-solid" onclick="showModal();return false;">📦 获取 ling <span class="arrow">→</span></a><a href="#life" class="btn btn-ghost">看看角色的一生 ↓</a></div>
+</div></section>
+
+<!-- ═ BLOCK: FOOTER ═ -->
+<footer class="footer"><div class="wrap"><div class="footer-inner">
+  <div class="copy"><span class="logo"><span class="mark" style="width:22px;height:22px;font-size:12px;border-radius:7px;">ling</span></span>© 2026 ling · v1.1.0 · build 135</div>
+  <div class="footer-links"><a href="/thanks/" target="_blank" rel="noopener" data-tw>感谢墙</a><a href="mailto:ling@voidomni.com">联系我们</a><a href="#">隐私</a></div>
+</div></div></footer>
+
+<!-- ═ BLOCK: MODAL ═ -->
+<div class="overlay" id="getModal" onclick="closeModal()">
+  <div class="mbox" onclick="event.stopPropagation()">
+    <h3>🔓 获取 ling</h3>
+    <p class="ms">选择你要的</p>
+    <a href="https://pan.quark.cn/s/c35658e967e9" target="_blank" class="mlink dl">
+      <span class="ic">📦</span>
+      <div><div class="tt">下载软件</div><div class="ht">夸克网盘 · 免费</div></div>
+    </a>
+    <a href="https://m.tb.cn/h.8g1F4tT?tk=f7GwgysqQDM" target="_blank" class="mlink by">
+      <span class="ic">🏪</span>
+      <div><div class="tt">获取激活码</div><div class="ht">¥9.9 · 闲鱼 · 永久有效</div></div>
+    </a>
+    <a href="https://ling.voidomni.com/pwa" target="_blank" class="mlink web">
+      <span class="ic">🌐</span>
+      <div><div class="tt">打开网页版</div><div class="ht">iOS · 添加到主屏幕</div></div>
+    </a>
+    <button class="mclose" onclick="closeModal()">取消</button>
+  </div>
+</div>
+
+<script>
+  // 玻璃导航
+  const nav=document.getElementById('nav');
+  addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>20));
+  // reveal
+  const io=new IntersectionObserver((es)=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.15});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  // 卡片光晕跟随
+  document.querySelectorAll('.feat').forEach(f=>f.addEventListener('mousemove',e=>{const r=f.getBoundingClientRect();f.style.setProperty('--gx',((e.clientX-r.left)/r.width*100)+'%');f.style.setProperty('--gy',((e.clientY-r.top)/r.height*100)+'%');}));
+  // 获取弹窗
+  function showModal(){document.getElementById('getModal').classList.add('open');}
+  function closeModal(){document.getElementById('getModal').classList.remove('open');}
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+  // 跑马灯复制
+  (function(){const mq=document.querySelector('.mq-track');if(mq)mq.innerHTML+=mq.innerHTML;})();
+  // 成长星图 · 径向特质网（黑白配色）
+  (function(){
+    const c=document.getElementById('constellation');if(!c)return;
+    const x=c.getContext('2d'),A='255,255,255',A2='230,230,234';
+    const labels=['温柔','倔强','怕黑','爱笑','守约','念旧','勇敢','撒娇','沉默','好奇','忠诚','浪漫'];
+    let W,H,nodes=[],t0=null;
+    function build(){
+      const r=c.getBoundingClientRect();W=r.width;H=r.height;
+      const dpr=Math.min(2,devicePixelRatio||1);c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0);
+      const cx=W/2,cy=H/2;
+      nodes=[{x:cx,y:cy,r:8,gold:true,label:'ling',fx:cx,fy:cy,ph:0}];
+      for(let i=0;i<labels.length;i++){
+        const ang=(i/labels.length)*Math.PI*2+(i%2?.26:0);
+        const rad=Math.min(W,H)*(0.24+(i%3)*0.07);
+        const px=cx+Math.cos(ang)*rad,py=cy+Math.sin(ang)*rad;
+        nodes.push({x:px,y:py,r:2.6+(i%3),gold:i%4===3,label:labels[i],fx:px,fy:py,ph:i*1.1});
+      }
+    }
+    function tick(t){
+      if(t0===null)t0=t;const el=(t-t0)/1000;x.clearRect(0,0,W,H);
+      for(let i=1;i<nodes.length;i++){const n=nodes[i];n.x=n.fx+Math.sin(el*.5+n.ph)*4;n.y=n.fy+Math.cos(el*.42+n.ph)*4;}
+      for(let j=1;j<nodes.length;j++){
+        const a=nodes[0],b=nodes[j];const g=x.createLinearGradient(a.x,a.y,b.x,b.y);
+        g.addColorStop(0,'rgba('+A+',.35)');g.addColorStop(1,'rgba('+(b.gold?A2:A)+',.18)');
+        x.strokeStyle=g;x.lineWidth=.8;x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);x.stroke();
+        if(j%3===0&&nodes[j+1]){x.strokeStyle='rgba('+A+',.1)';x.beginPath();x.moveTo(b.x,b.y);x.lineTo(nodes[j+1].x,nodes[j+1].y);x.stroke();}
+      }
+      for(let k=0;k<nodes.length;k++){
+        const nd=nodes[k];const tw=.6+.4*Math.sin(el*1.4+nd.ph);const col=nd.gold?A2:A;
+        x.beginPath();x.fillStyle='rgba('+col+','+tw+')';x.shadowColor='rgba('+col+',.9)';x.shadowBlur=nd.r*3.2;
+        x.arc(nd.x,nd.y,nd.r,0,Math.PI*2);x.fill();x.shadowBlur=0;
+        if(nd.label){x.font=(nd.gold?'600 13px ':'500 10.5px ')+"'PingFang SC','Microsoft YaHei',sans-serif";x.fillStyle='rgba(244,244,245,'+(nd.gold?.95:.62)+')';x.textAlign='center';x.fillText(nd.label,nd.x,nd.y-nd.r-7);}
+      }
+      requestAnimationFrame(tick);
+    }
+    window.addEventListener('resize',build);build();requestAnimationFrame(tick);
+  })();
+</script>
+<script>
+/* ling · 全局背景粒子  particles.js
+   固定全屏星空：多色发光星点 + 星座连线网 + 鼠标星网。
+   任意页面放置 <canvas id="motes"></canvas> 并引入本文件即全局生效。 */
+(function(){
+  const cv=document.getElementById('motes');
+  if(!cv) return;
+  const cx=cv.getContext('2d');
+  const PAL=[[245,245,247],[214,214,218],[172,172,176],[255,255,255]];
+  let W,H,ps=[],mx=-999,my=-999;
+  function rs(){W=cv.width=innerWidth;H=cv.height=innerHeight;}
+  function mk(){return {x:Math.random()*W,y:Math.random()*H,r:Math.random()*2.2+1.2,
+    vx:(Math.random()-.5)*1.52,vy:(Math.random()-.5)*1.52,c:PAL[(Math.random()*PAL.length)|0],
+    a:Math.random()*.5+.4,tw:Math.random()*6.28,tws:Math.random()*.02+.008};}
+  function init(){rs();ps=Array.from({length:96},mk);}
+  function drawP(p){
+    const tw=0.6+0.4*Math.sin(p.tw),al=p.a*tw;
+    const g=cx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*9);
+    g.addColorStop(0,'rgba('+p.c[0]+','+p.c[1]+','+p.c[2]+','+(al*.55)+')');
+    g.addColorStop(.4,'rgba('+p.c[0]+','+p.c[1]+','+p.c[2]+','+(al*.18)+')');
+    g.addColorStop(1,'rgba('+p.c[0]+','+p.c[1]+','+p.c[2]+',0)');
+    cx.fillStyle=g;cx.beginPath();cx.arc(p.x,p.y,p.r*9,0,7);cx.fill();
+    cx.beginPath();cx.arc(p.x,p.y,p.r,0,7);
+    cx.fillStyle='rgba('+p.c[0]+','+p.c[1]+','+p.c[2]+','+Math.min(1,al)+')';cx.fill();
+  }
+  function loop(){
+    cx.clearRect(0,0,W,H);
+    const near=[];
+    for(const p of ps){p.x+=p.vx;p.y+=p.vy;p.tw+=p.tws;
+      const dx=mx-p.x,dy=my-p.y,d=Math.hypot(dx,dy);
+      p.act=(mx>-900&&d<285)?(1-d/285):0;
+      if(p.act>0){if(d>0.01){p.x+=dx/d*(p.act*0.7);p.y+=dy/d*(p.act*0.7);}near.push(p);}
+      if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;drawP(p);
+      if(p.act>0){cx.fillStyle='rgba(255,255,255,'+(p.act*.9)+')';
+        cx.beginPath();cx.arc(p.x,p.y,p.r*1.3,0,7);cx.fill();}}
+    for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++){
+      const a=ps[i],b=ps[j],dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy);
+      if(d<115){const al=(1-d/115)*.2;cx.strokeStyle='rgba(255,255,255,'+al+')';cx.lineWidth=.6;
+        cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke();}}
+    if(mx>-900){
+      for(const p of near){const al=p.act*.5;
+        cx.strokeStyle='rgba(230,230,234,'+al+')';cx.lineWidth=.8;
+        cx.beginPath();cx.moveTo(mx,my);cx.lineTo(p.x,p.y);cx.stroke();}
+      for(let i=0;i<near.length;i++)for(let j=i+1;j<near.length;j++){
+        const a=near[i],b=near[j],dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy);
+        if(d<155){const al=(1-d/155)*Math.min(a.act,b.act)*.55;
+          cx.strokeStyle='rgba(255,255,255,'+al+')';cx.lineWidth=.6;
+          cx.beginPath();cx.moveTo(a.x,a.y);cx.lineTo(b.x,b.y);cx.stroke();}}
+      // ling 圆球（光标处）
+      const R=18,sg=cx.createRadialGradient(mx,my,0,mx,my,R*2.2);
+      sg.addColorStop(0,'rgba(255,255,255,.4)');sg.addColorStop(1,'rgba(255,255,255,0)');
+      cx.fillStyle=sg;cx.beginPath();cx.arc(mx,my,R*2.2,0,7);cx.fill();
+      cx.fillStyle='rgba(0,0,0,.92)';cx.beginPath();cx.arc(mx,my,R,0,7);cx.fill();
+      cx.lineWidth=1.4;cx.strokeStyle='rgba(255,255,255,.95)';
+      cx.beginPath();cx.arc(mx,my,R,0,7);cx.stroke();
+      cx.fillStyle='#F4F4F5';cx.font='600 13px Inter,system-ui,sans-serif';
+      cx.textAlign='center';cx.textBaseline='middle';cx.fillText('ling',mx,my+.5);
+    }
+    requestAnimationFrame(loop);
+  }
+  addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;});
+  addEventListener('mouseleave',()=>{mx=-999;my=-999;});
+  addEventListener('resize',init);
+  init();loop();
+})();
+
+</script>
+<script>
+  /* 感谢墙链接自适应：本地(file://)双击打开用本机路径；部署到网页(http/https)用根相对路径 /thanks/（与老版官网一致） */
+  if(location.protocol==='file:'){
+    document.querySelectorAll('a[data-tw]').forEach(function(a){a.href='file:///D:/%E6%84%9F%E8%B0%A2%E5%A2%9C/thank-wall/index.html';});
+  }
+</script>
+</body>
+</html>
