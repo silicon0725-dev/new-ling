@@ -1,0 +1,16 @@
+# ling-core：纯 Rust 核心库（禁止依赖任何 UI/GPU 框架）
+[package]
+name = "ling-core"
+version.workspace = true
+edition.workspace = true
+description = "「灵」角色引擎核心库：角色特质、三层记忆、世界状态、AI 客户端、持久化与星图布局"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = { version = "0.3", default-features = false, features = ["alloc", "std"] }
+# OpenAI 兼容客户端：reqwest 开启 stream 特性做 SSE；默认 native-tls（Windows 走 schannel，无需 OpenSSL）
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["rt", "time"] }
+# 持久化：bundled 内嵌编译 SQLite，免系统依赖
+rusqlite = { version = "0.32", features = ["bundled"] }
