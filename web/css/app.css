@@ -67,11 +67,14 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
 }
 .api-chip:hover { color: var(--text-2); border-color: var(--border-strong); --ring: var(--border-strong); }
 
-/* ── 页面骨架（无顶栏：.app 顶部留出胶囊带，全局侧边栏） ── */
-.app { flex: 1; min-height: 0; display: flex; padding-top: 56px; }
-main { flex: 1; min-width: 0; display: flex; }
+/* ── 页面骨架（桌面：侧栏为全高实心栏, 挤开内容; 悬浮胶囊只浮在主内容上方） ── */
+.app { flex: 1; min-height: 0; display: flex; }
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 56px; }
 .page { display: none; flex: 1; min-width: 0; min-height: 0; }
 .page.active { display: flex; }
+/* 桌面: 展开时隐藏悬浮开关(侧栏头部自带收起钮), 收起后显示 */
+#sidenav-toggle { display: none; }
+body.side-closed #sidenav-toggle { display: inline-flex; }
 .page-side {
   width: 248px; flex-shrink: 0; border-right: 1px solid var(--border);
   overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
@@ -84,8 +87,8 @@ main { flex: 1; min-width: 0; display: flex; }
   font-family: Georgia, 'Noto Serif SC', serif; font-size: var(--fs-brand); font-weight: 600;
   letter-spacing: -0.01em; user-select: none;
 }
-.side-close { display: none; }                    /* 桌面侧栏常驻，无关闭钮 */
-body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
+.side-close { display: inline-flex; }             /* 桌面: 侧栏头部收起钮 */
+body.side-closed .page-side { display: none; }    /* 桌面收起: 整栏移除, 内容占满 */
 .side-spacer { flex: 1; }
 .side-foot {
   display: flex; align-items: center; justify-content: space-between;
@@ -313,6 +316,8 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   .nav-label { display: none; }                /* 文字收起，只留图标 */
 
   .app { padding-top: 52px; }
+  main { padding-top: 0; }                     /* 让位由 .app 承担, 勿叠加 */
+  #sidenav-toggle { display: inline-flex; }    /* 抽屉开关恢复悬浮显示 */
   .page-side {
     position: fixed; top: 0; bottom: 0; left: 0; width: min(78vw, 280px);
     z-index: 97; background: var(--bg-2);          /* 盖过全部悬浮胶囊 */

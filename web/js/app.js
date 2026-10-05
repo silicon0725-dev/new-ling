@@ -475,7 +475,10 @@ function bindDrawer() {
       Sfx.play('select');
     }
   });
-  $('#side-close').addEventListener('click', () => { closeDrawer(); Sfx.play('close'); });
+  $('#side-close').addEventListener('click', () => {
+    if (isNarrow()) { closeDrawer(); Sfx.play('close'); }
+    else { document.body.classList.add('side-closed'); Sfx.play('close'); }
+  });
   $('#scrim').addEventListener('click', closeDrawer);
   window.addEventListener('resize', () => {
     if (isNarrow()) document.body.classList.remove('side-closed');
