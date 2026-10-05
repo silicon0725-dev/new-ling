@@ -337,7 +337,7 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
   .app { padding-top: 52px; }
   main { padding-top: 0; }                     /* 让位由 .app 承担, 勿叠加 */
   .page-side {
-    position: fixed; top: 0; bottom: 0; left: 0; width: min(78vw, 280px);
+    position: fixed; top: 0; bottom: 0; left: 0; width: 248px;
     z-index: 97; background: var(--bg-2);          /* 盖过全部悬浮胶囊 */
     transform: translateX(-105%);              /* 收起 */
     transition: transform var(--dur-med) var(--ease);
@@ -348,7 +348,7 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
   body.side-open .page-side { transform: none; }   /* 抽屉滑入 */
   /* 手机模式收起态: 开关钮回屏幕左上(修复桌面展开坐标 198px 泄漏) */
   .sidenav-toggle { top: 12px; left: 12px; }
-  body.side-open .sidenav-toggle { top: 12px; left: calc(min(78vw, 280px) - 56px); }   /* 附着抽屉右上角 */
+  body.side-open .sidenav-toggle { top: 12px; left: 192px; }   /* 附着抽屉右上角(248-56) */
 
   .chat-scroll { padding: var(--sp-4) var(--sp-3); }
   .bubble { max-width: 88%; }
