@@ -27,7 +27,7 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
   cursor: pointer; transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
     transform var(--dur-press) var(--ease);
 }
-@media (hover: hover) and (pointer: fine) { .iconbtn:hover { color: var(--text); border-color: var(--border-strong); } }
+@media (hover: hover) and (pointer: fine) { .iconbtn:hover { color: var(--text); border-color: var(--border-strong); --ring: var(--border-strong); } }
 .iconbtn:active { transform: scale(0.94); }
 
 /* ── 悬浮胶囊（无顶栏：侧栏开关 | 居中导航胶囊 | 右上声音） ── */
@@ -65,7 +65,7 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
   cursor: pointer; align-self: flex-start;
   transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.api-chip:hover { color: var(--text-2); border-color: var(--border-strong); }
+.api-chip:hover { color: var(--text-2); border-color: var(--border-strong); --ring: var(--border-strong); }
 
 /* ── 页面骨架（无顶栏：.app 顶部留出胶囊带，全局侧边栏） ── */
 .app { flex: 1; min-height: 0; display: flex; padding-top: 56px; }
@@ -109,7 +109,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
 }
 .card.clickable { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
-  .card.clickable:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+  .card.clickable:hover { border-color: var(--border-strong); --ring: var(--border-strong); transform: translateY(-1px); }
 }
 .card.clickable:active { transform: scale(0.99); }
 
@@ -121,7 +121,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   transition: transform var(--dur-press) var(--ease), border-color var(--dur-fast) var(--ease),
               opacity var(--dur-fast) var(--ease);
 }
-@media (hover: hover) and (pointer: fine) { .btn:hover { border-color: var(--border-strong); } }
+@media (hover: hover) and (pointer: fine) { .btn:hover { border-color: var(--border-strong); --ring: var(--border-strong); } }
 .btn:active { transform: scale(0.97); }         /* 按压反馈 */
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
@@ -134,7 +134,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   font-size: var(--fs-sm); font-family: inherit;
   transition: border-color var(--dur-fast) var(--ease);
 }
-.input:focus, .textarea:focus { outline: none; border-color: var(--border-strong); box-shadow: var(--glow); }
+.input:focus, .textarea:focus { outline: none; border-color: var(--border-strong); --ring: var(--border-strong); box-shadow: var(--glow); }
 .textarea { resize: vertical; min-height: 72px; line-height: 1.6; }
 .field { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .field label { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -147,7 +147,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--sp-4);
 }
 .banner .btn { margin-left: auto; }
-.banner.error { border-color: rgba(216,85,90,.4); color: var(--text); background: var(--danger-bg); }
+.banner.error { border-color: rgba(216,85,90,.4); --ring: rgba(216,85,90,.4); color: var(--text); background: var(--danger-bg); }
 
 /* ── 空态 ── */
 .empty {
@@ -167,7 +167,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   transition: opacity var(--dur-med) var(--ease), transform var(--dur-med) var(--ease);
 }
 .toast.enter { opacity: 0; transform: translateY(8px); }
-.toast.error { border-color: rgba(216,85,90,.5); background: var(--danger-bg); }
+.toast.error { border-color: rgba(216,85,90,.5); --ring: rgba(216,85,90,.5); background: var(--danger-bg); }
 
 /* ── 对话页 ── */
 .session-list { display: flex; flex-direction: column; gap: var(--sp-1); }
@@ -191,7 +191,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   animation: rise var(--dur-med) var(--ease) both; }
 .bubble.user { align-self: flex-end; background: var(--surface-strong); border: 1px solid var(--border); }
 .bubble.ai { align-self: flex-start; background: var(--bg-2); border: 1px solid var(--border-strong); }
-.bubble.error { align-self: flex-start; background: var(--danger-bg); border-color: rgba(216,85,90,.4); color: var(--text); font-size: var(--fs-sm); }
+.bubble.error { align-self: flex-start; background: var(--danger-bg); border-color: rgba(216,85,90,.4); --ring: rgba(216,85,90,.4); color: var(--text); font-size: var(--fs-sm); }
 .bubble.ai .cursor { display: inline-block; width: 8px; height: 15px; background: var(--accent);
   vertical-align: text-bottom; animation: blink var(--dur-dot) steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
@@ -213,7 +213,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   border-radius: 28px; padding: 10px 10px 8px 14px;
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.composer-shell:focus-within { border-color: var(--border-strong); box-shadow: var(--glow); }
+.composer-shell:focus-within { border-color: var(--border-strong); --ring: var(--border-strong); box-shadow: var(--glow); }
 .composer-input {
   display: block; width: 100%;
   border: none; background: transparent; resize: none;
@@ -337,10 +337,39 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   .char-grid { grid-template-columns: 1fr; }
 }
 
-/* ── 多曲率圆角（squircle 超椭圆）：仅用于大面积元件 —— 小尺寸 1px 描边控件
-   在 corner-shape 下角部描边会发虚(Chromium 细分瑕疵), 故回退普通圆角 ── */
+
+/* ── 多曲率圆角（squircle 超椭圆）+ 描边环 ──
+   原理: corner-shape 下 border 描边沿旧轮廓绘制, 角部发虚(即「stroke≠offset curve」问题)。
+   解法(Border = OuterShape − InnerShape): 描边改用 inset box-shadow 环,
+   渲染器沿实际 superellipse 轮廓向内等距填充, 法向距离恒定。描边色统一走 --ring。 ── */
 @supports (corner-shape: superellipse(2)) {
-  .card, .composer-shell, .modal, .bubble, .banner, .toast, .node-detail {
+  .btn, .input, .textarea, .card, .iconbtn, .send-fab, .composer-shell,
+  .modal, .banner, .toast, .bubble, .trait, .session-item,
+  .node-detail, .resident, .float-bottom, .api-chip,
+  .side-foot .nav-item {
     corner-shape: superellipse(2.4);
+  }
+  .btn, .input, .textarea, .card, .iconbtn, .composer-shell,
+  .modal, .banner, .toast, .bubble.user, .trait,
+  .resident, .float-bottom, .api-chip, .side-foot .nav-item {
+    border-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--ring, var(--border));
+  }
+  .modal, .toast, .node-detail, .float-bottom { --ring: var(--border-strong); }
+  .bubble.ai { border-color: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+  .btn.primary { --ring: transparent; }               /* 白底钮原描边即不可见 */
+  .btn.danger { --ring: rgba(216, 85, 90, 0.4); }
+  /* 带发光的元件: 描边环与 glow 叠加 */
+  .composer-shell:focus-within {
+    border-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--ring, var(--border-strong)), var(--glow);
+  }
+  .input:focus, .textarea:focus {
+    border-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--ring, var(--border-strong)), var(--glow);
+  }
+  .node-detail { box-shadow: inset 0 0 0 1px var(--ring, var(--border-strong)), var(--glow); }
+  .btn:focus-visible, .iconbtn:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--ring, var(--border)), var(--glow);
   }
 }
