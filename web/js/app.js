@@ -487,16 +487,27 @@ function bindDrawer() {
     Sfx.play(wasExpanded ? 'close' : 'open');
   });
   $('#scrim').addEventListener('click', closeDrawer);
-  /* 跨断点(横竖屏切换): 瞬间禁用过渡防撕裂, 并清理另一模式的状态残留 */
+  /* 跨断点(横竖屏切换): 侧栏开合状态保持 —— 桌面展开⇄手机抽屉打开无缝对应;
+     切换瞬间 no-anim 禁过渡防撕裂(定位模式 fixed⇄流内不做插值); 同断点内 resize 抽屉回归默认 */
   let wasNarrow = isNarrow();
   window.addEventListener('resize', () => {
     const nowNarrow = isNarrow();
-    closeDrawer();
     if (nowNarrow !== wasNarrow) {
       wasNarrow = nowNarrow;
       document.body.classList.add('no-anim');
-      requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('no-anim')));
+      if (nowNarrow) {          /* 桌面→手机: 侧栏展开则抽屉保持打开 */
+        document.body.toggle('side-open', !document.body.classList.contains('side-closed'));
+        document.body.classList.remove('side-closed');
+      } else {                  /* 手机→桌面: 抽屉开着则侧栏展开, 关着则保持收起 */
+        const open = document.body.classList.contains('side-open');
+        document.body.classList.remove('side-open');
+        document.body.classList.toggle('side-closed', !open);
+      }
+      /* 后台标签 rAF/setTimeout 会被节流, 短兜底可能不执行; 1s 兜底保证清除 */
+      const clear = () => document.body.classList.remove('no-anim');
+      setTimeout(clear, 60); setTimeout(clear, 1000);
     }
+    /* 同断点内 resize: 保持现状(不关抽屉), 仅校正形变开关状态 */
     updateToggleMode();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
