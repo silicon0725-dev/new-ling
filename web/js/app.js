@@ -506,6 +506,13 @@ function bindDrawer() {
       /* 后台标签 rAF/setTimeout 会被节流, 短兜底可能不执行; 1s 兜底保证清除 */
       const clear = () => document.body.classList.remove('no-anim');
       setTimeout(clear, 60); setTimeout(clear, 1000);
+      /* 浮起(变抽屉)/落下(变实心栏)入场动画: no-anim 移除后播放, 500ms 后清理 */
+      const side = document.getElementById('sidebar');
+      const animClass = nowNarrow ? 'side-anim-float' : 'side-anim-dock';
+      setTimeout(() => {
+        side.classList.add(animClass);
+        setTimeout(() => side.classList.remove('side-anim-float', 'side-anim-dock'), 500);
+      }, 60);
     }
     /* 同断点内 resize: 保持现状(不关抽屉), 仅校正形变开关状态 */
     updateToggleMode();
