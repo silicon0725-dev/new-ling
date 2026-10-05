@@ -119,17 +119,18 @@ class Starmap {
     x.clearRect(0, 0, this.W, this.H);
     x.fillStyle = '#000'; x.fillRect(0, 0, this.W, this.H);
 
-    x.save();
-    x.translate(this.W / 2 + this.view.x, this.H / 2 + this.view.y);
-    x.scale(this.view.k, this.view.k);
-    x.translate(-this.W / 2, -this.H / 2);
-
-    /* 背景星尘（不随选中变化，恒定微闪） */
+    /* 背景星尘 —— 屏幕空间绘制(缩放/平移变换之外): 视差背景层,
+       不然 zoom-in 时一窄条源粒子被拉伸铺满边缘, 密集重叠成灰带 */
     for (const p of this.particles) {
       const tw = 0.55 + 0.45 * Math.sin(this.t * 1.2 + p.ph);
       x.fillStyle = `rgba(255,255,255,${(p.a * tw * 0.5).toFixed(3)})`;
       x.beginPath(); x.arc(p.x, p.y, p.r, 0, 7); x.fill();
     }
+
+    x.save();
+    x.translate(this.W / 2 + this.view.x, this.H / 2 + this.view.y);
+    x.scale(this.view.k, this.view.k);
+    x.translate(-this.W / 2, -this.H / 2);
 
     /* 连线 */
     for (const [a, b] of this.edges) {
