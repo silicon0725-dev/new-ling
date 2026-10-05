@@ -1,0 +1,206 @@
+// 「灵」设计系统：深色单色（黑白灰）、克制的白色发光、细腻留白。
+// 仅使用无彩色；强调手段是「白」与「灰」的层级差，以及低透明度的白色光晕。
+
+export global Theme {
+    // —— 底色层次（由深到浅）——
+    out property <color> bg:        #0A0B0D;   // 窗体底色
+    out property <color> bg-deep:   #060708;   // 最深层（星图视口）
+    out property <color> rail:      #0D0E11;   // 侧栏 / 左栏
+    out property <color> surface:   #101216;   // 卡片 / 面板
+    out property <color> surface-2: #17191E;   // 次级面（悬浮、输入）
+    out property <color> hairline:  #24262C;   // 发丝分隔线
+
+    // —— 文字层次 ——
+    out property <color> text:      #EDEEF0;   // 主文字
+    out property <color> text-2:    #A7ABB3;   // 次文字
+    out property <color> text-3:    #6B7078;   // 弱文字 / 占位
+
+    // —— 强调（克制的白）——
+    out property <color> accent:    #FFFFFF;
+    out property <color> accent-dim:#C9CCD2;
+    out property <color> glow:      #59FFFFFF; // 白色光晕（低不透明度）
+
+    // —— 状态色（唯一的有彩：危险）——
+    out property <color> danger:    #D8555A;
+
+    // —— 尺寸 ——
+    out property <length> radius:    8px;
+    out property <length> radius-lg: 14px;
+    out property <length> pad:       22px;
+    out property <length> gap:       14px;
+}
+
+// 区块标题：小号灰色，克制分隔
+export component SectionTitle inherits Text {
+    color: Theme.text-3;
+    font-size: 12px;
+    height: 16px;
+}
+
+// 主按钮：近白底深色字，最重的一级操作
+export component PrimaryBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 34px;
+    min-width: 84px;
+    border-radius: Theme.radius;
+    background: root.enabled ? #E9EBEE : #23262B;
+    drop-shadow-blur: root.enabled ? 18px : 0px;
+    drop-shadow-color: #14FFFFFF;
+    drop-shadow-offset-y: 2px;
+    states [
+        hovered when root.enabled && ta.has-hover: { background: #FFFFFF; }
+        pressed when root.enabled && ta.pressed:   { background: #C6C9CE; }
+    ]
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 18px;
+        padding-right: 18px;
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            color: root.enabled ? #0B0C0E : #62666E;
+            font-size: 13px;
+            font-weight: 700;
+        }
+    }
+}
+
+// 次级按钮：描边幽灵按钮
+export component SecondaryBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 34px;
+    min-width: 84px;
+    border-radius: Theme.radius;
+    background: ta.has-hover && root.enabled ? #1B1E23 : transparent;
+    border-width: 1px;
+    border-color: root.enabled ? #34373E : #24262C;
+    states [
+        pressed when root.enabled && ta.pressed: { background: #22252B; }
+    ]
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            color: root.enabled ? Theme.text : Theme.text-3;
+            font-size: 13px;
+        }
+    }
+}
+
+// 危险按钮：仅用暗红描边提示后果
+export component DangerBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 34px;
+    min-width: 84px;
+    border-radius: Theme.radius;
+    background: transparent;
+    border-width: 1px;
+    border-color: #6E3A3D;
+    states [
+        hovered when root.enabled && ta.has-hover: { background: #2A1A1C; }
+        pressed when root.enabled && ta.pressed:   { background: #332023; }
+    ]
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            color: root.enabled ? Theme.danger : #5A4244;
+            font-size: 13px;
+        }
+    }
+}
+
+// 通用卡片：面板底 + 发丝描边 + 大圆角
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.hairline;
+    drop-shadow-blur: 26px;
+    drop-shadow-color: #0A00000F;
+}
+
+// 输入框底：与 fluent-dark 标准控件搭配使用的标签
+export component FieldLabel inherits Text {
+    color: Theme.text-3;
+    font-size: 12px;
+    height: 14px;
+}
+
+// 侧边导航项：选中态以浅面 + 白字 + 白色字形强调
+export component NavItem inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    in property <string> badge: "";
+    in property <bool> active;
+    callback activate;
+    height: 40px;
+    border-radius: 10px;
+    background: root.active ? #1B1E24 : (nav-ta.has-hover ? #131519 : transparent);
+    states [
+        pressed when nav-ta.pressed: { background: #20242B; }
+    ]
+    nav-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activate(); }
+    }
+    HorizontalLayout {
+        padding-left: 13px;
+        padding-right: 12px;
+        spacing: 10px;
+        Text {
+            text: root.glyph;
+            color: root.active ? Theme.accent : #5C6169;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.label;
+            color: root.active ? Theme.text : #8F949C;
+            font-size: 13px;
+            font-weight: root.active ? 700 : 400;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if root.badge != "" : Rectangle {
+            width: 46px;
+            height: 18px;
+            border-radius: 9px;
+            background: #17191E;
+            border-width: 1px;
+            border-color: #2B2E35;
+            Text {
+                text: root.badge;
+                color: Theme.text-3;
+                font-size: 9px;
+            }
+        }
+    }
+}

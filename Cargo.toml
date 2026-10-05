@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "crates/*",
     "crates/ling-render",
+    "crates/ling-app",
 ]
 
 [workspace.package]

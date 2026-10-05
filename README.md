@@ -38,7 +38,7 @@ Cargo 工作区按三层拆分，**依赖严格单向（自上而下）**：
 | `ling-render` | 星图渲染器：把 `ling-core::starmap` 的模拟结果渲染为力导向图 + 粒子 + 发光效果，以离屏 RGBA 帧输出交给上层 UI 显示 |
 | `ling-app` | 应用层：五页 UI（铸造 / 对话 / 领地 / 星图 / 设置）与 LLM 流程编排，基于 Slint 界面 + tokio 异步运行时调度对话、记忆与渲染 |
 
-> 当前进度：`ling-core` 已落地并通过 `cargo build`；`ling-render` 与 `ling-app` 按上述架构规划推进中。
+> 当前进度：`ling-core`、`ling-render`、`ling-app` 均已落地；`cargo build --workspace` 与 `cargo test --workspace` 全量通过。
 
 ## 本地运行
 
@@ -61,6 +61,14 @@ cargo run -p ling-app
 4. 点击**连通性测试**，确认服务可达后即可开始铸造角色。
 
 仅构建核心库：`cargo build -p ling-core`。
+
+### 数据与安全约定
+
+- 数据目录：Windows 默认 `%APPDATA%\ling`（可用环境变量 `LING_DATA_DIR` 覆盖），内含 SQLite 数据库 `ling.db`、模型配置 `settings.json` 与全量导出的备份 JSON；
+- 模型网关仅接受 `http/https` 且可公网访问的地址（环回 / 私有 / 保留网段会被拒绝，不跟随重定向），校验由 `ling-core::ai` 在每次请求前执行；
+- API Key 只保存在本机数据目录，源码、示例与测试中不含任何真实凭据；
+- 全部 SQL 经由 `ling-core::store`（含应用层近况表 `app_timeline`），一律静态语句 + 参数绑定；
+- 无人工环境可用 `LING_SMOKE_NAV=1 cargo run -p ling-app` 自动巡检六个页面后正常退出，用于「五页可导航、无 panic」验收。
 
 ## 路线图与非目标
 
