@@ -10,17 +10,18 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">ling</div>
+  <div class="brand" title="ling">ling</div>
   <nav class="nav" aria-label="页面导航">
     <div class="nav-item active" data-page="chat" data-icon="message-circle" tabindex="0"><span class="nav-label">对话</span></div>
     <div class="nav-item" data-page="characters" data-icon="users" tabindex="0"><span class="nav-label">角色</span></div>
     <div class="nav-item" data-page="territory" data-icon="house" tabindex="0"><span class="nav-label">领地</span></div>
     <div class="nav-item" data-page="starmap" data-icon="sparkles" tabindex="0"><span class="nav-label">星图</span></div>
-    <div class="nav-item" data-page="settings" data-icon="settings" tabindex="0"><span class="nav-label">设置</span></div>
   </nav>
-  <div class="spacer"></div>
-  <button class="iconbtn" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
-  <div class="api-chip" id="api-chip">API 未配置</div>
+  <div class="top-actions">
+    <div class="nav-item" data-page="settings" data-icon="settings" tabindex="0" title="设置"><span class="nav-label">设置</span></div>
+    <button class="iconbtn" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
+    <div class="api-chip" id="api-chip">API 未配置</div>
+  </div>
 </header>
 
 <main>

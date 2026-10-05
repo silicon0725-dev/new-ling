@@ -457,7 +457,13 @@ function closeDrawer() { document.body.classList.remove('side-open'); }
 function bindDrawer() {
   $('.brand').addEventListener('click', () => {
     if (!isNarrow()) return;
-    document.body.classList.toggle('side-open');
+    const onChat = document.querySelector('.page.active')?.dataset.page === 'chat';
+    if (!onChat) {                                   /* 其他页点 ling = 回对话页并展开 */
+      location.hash = '#/chat';
+      document.body.classList.add('side-open');
+    } else {
+      document.body.classList.toggle('side-open');
+    }
     Sfx.play(document.body.classList.contains('side-open') ? 'open' : 'close');
   });
   $('#scrim').addEventListener('click', closeDrawer);

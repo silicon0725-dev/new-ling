@@ -30,30 +30,32 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
 @media (hover: hover) and (pointer: fine) { .iconbtn:hover { color: var(--text); border-color: var(--border-strong); } }
 .iconbtn:active { transform: scale(0.94); }
 
-/* ── 顶栏 ── */
+/* ── 顶栏（胶囊式三区：brand | 居中导航胶囊 | 右侧操作） ── */
 .topbar {
-  display: flex; align-items: center; gap: var(--sp-4);
-  padding: 0 var(--sp-5); height: 52px; flex-shrink: 0;
+  position: relative;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: 0 var(--sp-4); height: 52px; flex-shrink: 0;
   background: var(--bg-2); border-bottom: 1px solid var(--border);
 }
-.brand { font-family: Georgia, 'Noto Serif SC', serif; font-size: var(--fs-brand); font-weight: 600; letter-spacing: -0.01em; }
-.nav { display: flex; gap: var(--sp-1); margin-left: var(--sp-6); position: relative; }
+.brand { font-family: Georgia, 'Noto Serif SC', serif; font-size: var(--fs-brand); font-weight: 600; letter-spacing: -0.01em; user-select: none; }
+.nav {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; gap: 2px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+}
 .nav-item {
   position: relative; display: flex; align-items: center; gap: 7px;
-  padding: var(--sp-2) var(--sp-4); border-radius: var(--radius);
+  padding: 6px 13px; border-radius: 999px;
   color: var(--text-2); cursor: pointer; user-select: none; font-size: var(--fs-sm);
-  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 .nav-item svg.ic { opacity: 0.75; transition: opacity var(--dur-fast) var(--ease); }
 .nav-item.active svg.ic, .nav-item:hover svg.ic { opacity: 1; }
-.nav-item:hover { color: var(--text); background: var(--surface); }
-.nav-item.active { color: var(--text); background: var(--surface-strong); }
-.nav-item.active::before {   /* 规范 2.6：active 态左侧指示条 */
-  content: ''; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 18px; border-radius: 2px; background: var(--accent);
-  box-shadow: var(--glow);
-}
-.topbar .spacer { flex: 1; }
+.nav-item:hover { color: var(--text); }
+.nav-item.active { color: var(--text); background: var(--surface-strong); box-shadow: var(--glow); }
+.top-actions { display: flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+.top-actions .nav-item { padding: 8px 11px; }
 .api-chip {
   font-size: var(--fs-xs); color: var(--text-3); padding: 3px 10px;
   border: 1px solid var(--border); border-radius: 100px;
@@ -251,8 +253,9 @@ main { flex: 1; min-height: 0; display: flex; }
 /* ═══ 窄屏自适应 ≤760px：导航只留图标 + 侧栏抽屉 ═══ */
 @media (max-width: 760px) {
   .brand { cursor: pointer; }
-  .nav { margin-left: var(--sp-3); gap: 2px; }
-  .nav-item { padding: var(--sp-2); }
+  .nav { padding: 3px; gap: 1px; }             /* 胶囊保持居中，仅收紧 */
+  .nav-item { padding: 7px; }
+  .top-actions .nav-item { padding: 8px; }
   .nav-label { display: none; }                /* 文字收起，只留图标 */
 
   .page-side {
