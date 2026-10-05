@@ -340,7 +340,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
 /* ── 边缘近邻发光（仅精确指针设备, EdgeGlow 驱动 CSS 变量） ──
    光标靠近组件边缘时, 最近点处的边缘环带被照亮(参考 Windows 图标近邻光带)。
    ::after 只保留 1.5px 边缘环(mask xor), 环色为径向光斑, 中心跟随光标最近点。 ── */
-.glow-edge { position: relative; }
+.glow-edge:not(.sidenav-toggle):not(.sfx-float) { position: relative; }   /* fixed 悬浮钮自带定位, 勿覆盖 */
 .glow-edge::after {
   content: '';
   position: absolute; inset: 0;
