@@ -1,4 +1,4 @@
-//! 通用小工具：时间戳、相对时间、字符截断、特质文本解析。
+//! 通用小工具：时间戳、相对时间、字符截断、特质文本解析、导出文件名时间戳。
 
 /// 当前 Unix 秒
 pub fn now_ts() -> i64 {
@@ -6,6 +6,48 @@ pub fn now_ts() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// 本地可读时间戳（导出文件名用，形如 20261005-1530）
+pub fn local_file_stamp() -> String {
+    use chrono::{Datelike, Timelike};
+    let now = chrono::Local::now();
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}",
+        now.year(),
+        now.month(),
+        now.day(),
+        now.hour(),
+        now.minute(),
+    )
+}
+
+/// 特质编辑文本的行内统计：返回 (提示文案, 是否存在缺冒号行)。
+/// 每个非空行应形如「特质名：描述」（半角/全角冒号均可）。
+pub fn traits_hint(text: &str) -> (String, bool) {
+    let mut count = 0usize;
+    let mut bad_line = 0usize;
+    for (idx, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        count += 1;
+        let missing_colon = line.split_once('：').or_else(|| line.split_once(':')).is_none();
+        if missing_colon && bad_line == 0 {
+            bad_line = idx + 1;
+        }
+    }
+    if bad_line > 0 {
+        (
+            format!("已识别 {count} 条特质 · 第 {bad_line} 行缺少冒号，将被记为无名特质"),
+            true,
+        )
+    } else if count > 0 {
+        (format!("已识别 {count} 条特质"), false)
+    } else {
+        (String::new(), false)
+    }
 }
 
 /// 相对时间（避免引入时区依赖）：刚刚 / N 分钟前 / N 小时前 / N 天前
@@ -115,5 +157,31 @@ mod tests {
             parsed,
             vec![("冷静".to_string(), "临危不乱".to_string())]
         );
+    }
+
+    #[test]
+    fn traits_hint_counts_and_flags_bad_lines() {
+        // 空 / 仅空白：不显示提示
+        assert_eq!(traits_hint("  \n \n"), (String::new(), false));
+        // 全部规范（半角冒号亦可）
+        let (hint, bad) = traits_hint("谨慎：凡事三思\n冷静:临危不乱");
+        assert_eq!(hint, "已识别 2 条特质");
+        assert!(!bad);
+        // 缺冒号行：提示首个坏行（解析器会把整行当作特质名，故提示用户）
+        let (hint, bad) = traits_hint("谨慎：凡事三思\n\n坚韧执着不肯回头\n冷静：临危不乱");
+        assert!(bad);
+        assert!(hint.contains("第 3 行缺少冒号"), "提示首个坏行：{hint}");
+        assert!(hint.contains("已识别 3 条特质"), "统计仍包含坏行：{hint}");
+    }
+
+    #[test]
+    fn local_file_stamp_shape() {
+        let stamp = local_file_stamp();
+        // 形如 20261005-1530：8 位日期 + '-' + 4 位时间
+        let parts: Vec<&str> = stamp.split('-').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].len(), 8);
+        assert_eq!(parts[1].len(), 4);
+        assert!(parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())));
     }
 }

@@ -1,0 +1,128 @@
+// 「灵」设计令牌唯一真源（依据《视觉设计规范 v1.0》第 1 章）。
+// 全工程色值只允许出现在本文件；theme.slint 的 Theme 为兼容别名，
+// 新代码一律引用 Tokens。实体色 = 纯黑底 + 白色叠加的预混合值（与 ling.html 气质同源）。
+
+export global Tokens {
+    // —— 底色（由深到浅）——
+    out property <color> bg:               #0A0B0D;   // 窗体底色
+    out property <color> bg-deep:          #060708;   // 星图视口、全屏遮罩基色
+    out property <color> rail:             #0D0E11;   // 侧栏、对话页左栏
+    out property <color> surface:          #101216;   // 卡片、面板、顶栏、输入区
+    out property <color> surface-2:        #17191E;   // 徽标底、次级悬浮面
+    out property <color> surface-hover:    #1B1E23;   // 可交互元素 hover 底
+    out property <color> surface-pressed:  #22252B;   // 按压底
+    out property <color> surface-selected: #1C1F25;   // 列表选中底（对话 / 会话 / 星图角色）
+
+    // —— 边框 ——
+    out property <color> hairline:          #24262C;  // 静态发丝分隔线、禁用描边
+    out property <color> hairline-strong:   #34373E;  // 可交互描边（次按钮、hover 卡片）
+    out property <color> hairline-selected: #2F333A;  // 列表选中态描边
+    out property <color> focus-ring:        #6EFFFFFF; // 键盘焦点环（白 43%）
+
+    // —— 文字三级 + 弱装饰 ——
+    out property <color> text:       #EDEEF0;         // 主文字
+    out property <color> text-2:     #A7ABB3;         // 次文字、AI 气泡正文
+    out property <color> text-3:     #6B7078;         // 弱文字、占位、说明
+    out property <color> text-faint: #4A4E55;         // 图例、版本号等近背景装饰字
+    out property <color> text-hint:  #555A62;         // 星图视口提示行（介于 faint 与 text-3）
+
+    // —— 强调（白与灰的层级差）——
+    out property <color> accent:             #FFFFFF; // 选中字形、指示条、光圈
+    out property <color> accent-dim:         #C9CCD2; // 银灰强调 = 成功态
+    out property <color> accent-btn:         #E9EBEE; // 主按钮常态底（渐变基准）
+    out property <color> accent-btn-hover:   #FFFFFF; // 主按钮 hover 底
+    out property <color> accent-btn-pressed: #C6C9CE; // 主按钮按压底
+    out property <color> on-accent:          #0B0C0E; // 主按钮上的深色文字
+    out property <color> on-accent-disabled: #62666E; // 主按钮禁用文字
+
+    // —— 光晕（低透明度白）——
+    out property <color> glow-1: #26FFFFFF;           // 弱：时间线星点
+    out property <color> glow-2: #33FFFFFF;           // 中：品牌徽标、身份徽标、空态图标
+    out property <color> glow-3: #59FFFFFF;           // 强：星图选中光圈、焦点环阴影
+    out property <color> glow-2-breathe: #45FFFFFF;   // 品牌徽标呼吸上限（700ms 往复）
+
+    // —— 危险（全应用唯一的有彩）——
+    out property <color> danger:              #D8555A; // 危险主色（按钮字、状态点）
+    out property <color> danger-bg:           #241B1C; // 错误面底
+    out property <color> danger-bg-hover:     #2A1A1C; // 危险按钮 hover 底
+    out property <color> danger-bg-pressed:   #332023; // 危险按钮按压底
+    out property <color> danger-border:       #4A3234; // 错误面描边
+    out property <color> danger-border-btn:   #6E3A3D; // 危险按钮描边
+    out property <color> danger-text:         #DC9A9D; // 错误面文字（降饱和红白）
+    out property <color> danger-text-disabled: #5A4244; // 危险按钮禁用文字
+
+    // —— 弹层 ——
+    out property <color> toast-bg:     #E9EBEEF2;     // Toast 反白底（94% 不透明）
+    out property <color> on-toast:     #101216;       // Toast 文字
+    out property <color> overlay:      #000000C0;     // 模态遮罩（黑 75%）
+    out property <color> viewport-veil: #060708D9;    // 星图未就绪遮罩（85%）
+    out property <color> panel-float:  #0D0E11E6;     // 星图缩放控件组等浮动面板底
+
+    // —— 组件语义色（供 theme 组件与页面引用）——
+    out property <color> btn-disabled-bg:     #23262B; // 主按钮禁用底
+    out property <color> banner-bg:           #14161B; // API 引导横幅底
+    out property <color> banner-border:       #2C2F36; // 横幅 / 对话框描边
+    out property <color> bubble-user-bg:      #1B1E24; // 用户气泡底
+    out property <color> bubble-user-border:  #2B2F36; // 用户气泡描边
+    out property <color> bubble-ai-bg:        #121419; // AI 气泡底
+    out property <color> bubble-ai-border:    #22252B; // AI 气泡描边
+    out property <color> bubble-ai-text:      #DDE0E4; // AI 气泡正文
+    out property <color> list-hover:          #14161A; // 列表行 hover 底
+    out property <color> nav-glyph:           #5C6169; // 导航字形默认色
+    out property <color> nav-label:           #8F949C; // 导航文字默认色
+    out property <color> nav-hover:           #131519; // 导航 hover 底
+    out property <color> nav-pressed:         #20242B; // 导航按压底
+    out property <color> nav-active:          #1B1E24; // 导航选中底
+    out property <color> brand-bg:            #15171B; // 品牌徽标 / 星点底
+    out property <color> brand-border:        #2E3138; // 品牌徽标描边
+    out property <color> badge-neutral-border: #2B2E35; // 中性徽标描边
+    out property <color> badge-busy-bg:       #1A1C22; // 进行中徽标底
+    out property <color> badge-ok-bg:         #16181D; // 成功徽标底
+    out property <color> badge-ok-border:     #2E3138; // 成功徽标描边
+    out property <color> forge-preview-bg:    #0D0F12; // 铸造预览窗底
+
+    // —— 阴影 / 发光色（Slint 四属性组合中的 color 项）——
+    out property <color> shadow-card:        #0A00000F;
+    out property <color> shadow-card-hover:  #14000000;
+    out property <color> shadow-primary:     #14FFFFFF;
+    out property <color> shadow-primary-hover: #22FFFFFF;
+    out property <color> shadow-toast:       #22000000;
+    out property <color> shadow-modal:       #3D000000;
+    out property <color> shadow-bubble:      #0FFFFFFF; // AI 气泡白 6% 极弱光
+
+    // —— 字号阶梯 ——
+    out property <length> fs-2xs: 10px;   // 时间戳、图例、徽标、计数行
+    out property <length> fs-xs:  11px;   // 辅助说明、FieldLabel 副注
+    out property <length> fs-s:   12px;   // 次要正文、标签、Toast
+    out property <length> fs-m:   13px;   // 正文、按钮、导航、详情卡标题
+    out property <length> fs-l:   15px;   // 卡片标题、顶栏角色名、空态动作标题
+    out property <length> fs-xl:  17px;   // 页面主标题、空态主文案
+    out property <length> fs-2xl: 22px;   // 仅身份页徽标字形
+
+    // —— 间距（4px 基）——
+    out property <length> sp-1: 4px;
+    out property <length> sp-2: 8px;
+    out property <length> sp-3: 12px;
+    out property <length> sp-4: 16px;
+    out property <length> sp-5: 20px;
+    out property <length> sp-6: 24px;
+    out property <length> sp-8: 32px;
+
+    // —— 圆角 ——
+    out property <length> radius-xs:   6px;   // 微型按钮（重试、删除×、缩放控件）
+    out property <length> radius-s:    8px;   // 按钮、输入、列表项
+    out property <length> radius-m:    10px;  // NavItem、缩放控件组
+    out property <length> radius-l:    14px;  // 卡片、对话框
+    out property <length> radius-pill: 999px; // Toast、徽标
+
+    // —— 动效时长（easing 为约定字面量：过渡 cubic-bezier(0.2,0.7,0.2,1)、按压 ease-out、脉冲 ease-in-out）——
+    out property <duration> dur-press: 120ms;        // 按压、选中即时反馈
+    out property <duration> dur-hover: 150ms;        // hover、焦点、按钮交叉淡化
+    out property <duration> dur-panel: 220ms;        // 横幅 / 错误行展开、Toast 入场
+    out property <duration> dur-page: 260ms;         // 页面切换淡入
+    out property <duration> dur-breathe-half: 700ms; // 呼吸半程（周期 1400ms）
+    out property <duration> dur-dot: 420ms;          // 流式三点单点周期（错峰 delay 0/140/280ms）
+
+    // —— 呼吸相位：Rust 慢速节拍每 1400ms 翻转一次，驱动全部呼吸动效（同屏 ≤ 2 处）——
+    in-out property <bool> glow-phase: false;
+}

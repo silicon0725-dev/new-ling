@@ -1,7 +1,11 @@
 // 「灵」桌面工作台主界面：深色单色、侧边导航、五页 + 身份占位。
-// 页面内容直接内联在主窗口中（便于统一访问 root 状态），主题与通用控件来自 theme.slint。
+// 页面内容直接内联在主窗口中（便于统一访问 root 状态），主题与通用控件来自 theme.slint，
+// 设计令牌唯一真源在 tokens.slint（Theme 为兼容别名）。
 
-import { Theme, SectionTitle, PrimaryBtn, SecondaryBtn, DangerBtn, Card, FieldLabel, NavItem } from "theme.slint";
+import { Tokens } from "tokens.slint";
+export { Tokens }
+import { Theme, SectionTitle, PrimaryBtn, SecondaryBtn, DangerBtn, Card, FieldLabel, NavItem,
+         StreamingDots, Badge, EmptyState, Banner } from "theme.slint";
 import { LineEdit, TextEdit, ListView, ScrollView } from "std-widgets.slint";
 
 // —— 数据结构（Rust 侧通过 slint 生成的同名结构体读写）——
@@ -10,13 +14,14 @@ export struct ChatBubble {
     is-user: bool,      // true = 用户侧气泡
     content: string,
     streaming: bool,    // 流式生成中
-    failed: bool,       // 请求失败（内容为错误说明）
+    failed: bool,       // 请求失败（独立错误气泡，绝不改写用户气泡）
+    time: string,       // 相对时间（悬停气泡时显示；流式占位气泡为空）
 }
 
 export struct SessionItem {
-    id: int,            // -1 表示「新对话」占位
+    id: int,            // -1 表示「新对话」占位（首条消息落库后由 Rust 替换）
     title: string,
-    time: string,       // 相对时间（如「3 分钟前」）
+    time: string,       // 相对时间（如「3 分钟前」；占位项为「—」）
 }
 
 export struct CharacterItem {
@@ -59,6 +64,7 @@ export component App inherits Window {
     in-out property <[ChatBubble]> chat-messages: [];
     in-out property <string> chat-input-text: "";
     in-out property <bool> chat-busy: false;
+    in-out property <bool> chat-stick-bottom: true;  // 消息列表是否贴底跟随（用户上滚越线即解除）
 
     // —— 角色页 ——
     in-out property <[CharacterItem]> characters: [];
@@ -68,65 +74,116 @@ export component App inherits Window {
     in-out property <string> editor-origin: "";
     in-out property <string> editor-faction: "";
     in-out property <string> editor-traits: "";       // 每行一条「特质名：描述」
+    in-out property <bool> editor-name-touched: false;      // 姓名失焦 / 尝试保存后才显示行内错误
+    in-out property <string> editor-traits-hint: "";        // 特质行实时统计（Rust 计算）
+    in-out property <bool> editor-traits-hint-bad: false;   // 存在缺冒号行时为真
     in-out property <string> forge-material: "";
     in-out property <string> forge-preview: "";
     in-out property <bool> forge-busy: false;
+    in-out property <string> forge-error: "";          // 铸造失败常驻错误行（可关闭）
 
     // —— 领地页 ——
     in-out property <[CharacterItem]> residents: [];
     in-out property <[TimelineItem]> timeline: [];
     in-out property <bool> timeline-busy: false;
+    in-out property <string> timeline-progress-text: "";   // 「第 n/N 位」生成进度
     in-out property <string> world-clock-text: "";
 
     // —— 星图页 ——
     in-out property <image> starmap-frame;
     in-out property <bool> starmap-running: false;
+    in-out property <bool> starmap-has-frame: false;   // 首帧到达前保持遮罩，避免白屏一瞬
     in-out property <string> starmap-status: "正在初始化星图……";
+    in-out property <string> starmap-stats: "";        // 「N 节点 · M 连线」常驻运行数据
     in-out property <[string]> starmap-character-options: [];
     in-out property <int> starmap-character-index: -1;
     in-out property <string> starmap-detail-title: "未选中星点";
     in-out property <string> starmap-detail-body: "点击星图中的星点，可在此查看对应的角色 / 特质 / 记忆详情。";
+    in-out property <int> starmap-zoom-index: 1;       // 缩放档位下标（0..3）
+    in-out property <length> starmap-pan-x: 0px;       // 拖拽平移偏移（视口像素）
+    in-out property <length> starmap-pan-y: 0px;
+    in-out property <float> starmap-sel-x: -1;         // 选中星点的帧像素坐标（< 0 = 未选中）
+    in-out property <float> starmap-sel-y: -1;
+    property <[float]> zoom-steps: [0.75, 1.0, 1.5, 2.0];
+    property <[string]> zoom-labels: ["75%", "100%", "150%", "200%"];
+    property <float> starmap-zoom: root.zoom-steps[root.starmap-zoom-index];
 
     // —— 设置页 ——
     in-out property <string> settings-base-url: "";
     in-out property <string> settings-api-key: "";
     in-out property <string> settings-model: "";
     in-out property <bool> conn-testing: false;
+    in-out property <int> conn-state: 0;               // 0 无结果 / 1 测试中 / 2 成功 / 3 失败
     in-out property <string> conn-result: "";
     in-out property <string> data-dir-text: "";
     in-out property <string> export-path-text: "";
     in-out property <string> import-path-text: "";
+    in-out property <bool> data-op-busy: false;        // 导出 / 导入 / 清空互禁
 
     // —— 全局弹层 ——
     in-out property <string> toast-text: "";
+    in-out property <bool> toast-is-error: false;
+    in-out property <string> confirm-title: "请确认操作";
     in-out property <bool> confirm-visible: false;
     in-out property <string> confirm-text: "";
 
     // ================= 回调（Rust 侧装配） =================
     callback send-message(string);
+    callback stop-generation();          // 停止流式生成（保留已生成部分入库）
+    callback retry-message(int);         // 重试失败的轮次（参数为错误气泡下标）
     callback select-chat-character(int);
-    callback select-session(int);
+    callback select-session(int);        // 参数为会话 id；-1 = 「新对话」占位
+    callback delete-session(int);        // 参数为会话 id（带确认框）
     callback new-session();
     callback save-character();
     callback edit-character(int);
     callback delete-character(int);
     callback new-character();
+    callback reset-editor-form();        // 仅清空字段，不重置编辑目标（修复「清空」语义陷阱）
+    callback update-traits-hint(string); // 特质文本变化 → Rust 计数 / 提示缺冒号
     callback start-forge();
     callback confirm-forge();
+    callback forge-to-editor();          // 把铸造预览送入上方编辑器微调
+    callback dismiss-forge-error();
     callback generate-timeline();
+    callback open-character-chat(int);   // 领地居民卡 → 跳对话页并选中该角色
     callback starmap-select-character(int);
     callback starmap-reload();
-    callback starmap-clicked(float, float, float, float); // 视口宽、高、点击 x、y
+    callback starmap-clicked(float, float);  // 帧像素坐标（Slint 已按缩放 / 平移反解）
     callback save-settings();
     callback test-connection();
     callback export-data();
     callback import-data(string);
     callback clear-data();
+    callback copy-export-path();         // 复制最近导出路径到系统剪贴板
     callback confirm-accept();
     callback confirm-cancel();
     callback goto-settings();
+    callback dismiss-toast();
+
+    // 特质文本变化 → Rust 侧统计「已识别 N 条 / 第 M 行缺少冒号」
+    changed editor-traits => { root.update-traits-hint(root.editor-traits); }
+    changed editor-name => { root.editor-name-touched = true; }
 
     // ================= 整体布局 =================
+
+    // 全局键盘：包裹全部内容的祖先 FocusScope——任何未处理的按键冒泡至此，
+    // Ctrl+1~6 切换页面（P2-1 桌面可达性）
+    root-keys := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.modifiers.control && !event.modifiers.shift) {
+                if (event.text == "1") { root.current-page = 0; return accept; }
+                if (event.text == "2") { root.current-page = 1; return accept; }
+                if (event.text == "3") { root.current-page = 2; return accept; }
+                if (event.text == "4") { root.current-page = 3; return accept; }
+                if (event.text == "5") { root.current-page = 4; return accept; }
+                if (event.text == "6") { root.current-page = 5; return accept; }
+            }
+            return reject;
+        }
+        init => { root-keys.focus(); }
+
     HorizontalLayout {
         // ———— 侧边栏 ————
         Rectangle {
@@ -139,7 +196,7 @@ export component App inherits Window {
                 padding: 18px;
                 spacing: 6px;
 
-                // 品牌区：一点白色星芒
+                // 品牌区：一点白色星芒，随 glow-phase 缓慢呼吸
                 HorizontalLayout {
                     spacing: 10px;
                     padding-bottom: 18px;
@@ -147,14 +204,15 @@ export component App inherits Window {
                     Rectangle {
                         width: 34px; height: 34px;
                         border-radius: 17px;
-                        background: #15171B;
+                        background: Tokens.brand-bg;
                         border-width: 1px;
-                        border-color: #2E3138;
+                        border-color: Tokens.brand-border;
                         drop-shadow-blur: 22px;
-                        drop-shadow-color: #33FFFFFF;
+                        drop-shadow-color: Tokens.glow-phase ? Tokens.glow-2-breathe : Tokens.glow-2;
+                        animate drop-shadow-color { duration: Tokens.dur-breathe-half; easing: ease-in-out; }
                         Text {
                             text: "灵";
-                            color: Theme.accent;
+                            color: Tokens.accent;
                             font-size: 16px;
                             font-weight: 800;
                         }
@@ -164,14 +222,14 @@ export component App inherits Window {
                         spacing: 1px;
                         Text {
                             text: "灵";
-                            color: Theme.text;
+                            color: Tokens.text;
                             font-size: 16px;
                             font-weight: 800;
                         }
                         Text {
                             text: "角色扮演工作台";
-                            color: Theme.text-3;
-                            font-size: 11px;
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
                         }
                     }
                 }
@@ -212,14 +270,14 @@ export component App inherits Window {
                 // 底部：数据目录与版本
                 Text {
                     text: "数据 · " + root.data-dir-text;
-                    color: Theme.text-3;
-                    font-size: 10px;
+                    color: Tokens.text-3;
+                    font-size: Tokens.fs-2xs;
                     overflow: elide;
                 }
                 Text {
                     text: "v0.1.0 · 本地优先";
-                    color: #4A4E55;
-                    font-size: 10px;
+                    color: Tokens.text-faint;
+                    font-size: Tokens.fs-2xs;
                 }
             }
         }
@@ -232,53 +290,59 @@ export component App inherits Window {
             // 第 0 页：对话
             // =========================================================
             if root.current-page == 0 : HorizontalLayout {
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-page; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => { self.opacity = 1; }
+
                 // 左栏：角色 + 会话
                 Rectangle {
                     width: 252px;
                     background: Theme.rail;
                     VerticalLayout {
-                        padding: 14px;
-                        spacing: 8px;
+                        padding: Tokens.sp-4;
+                        spacing: Tokens.sp-2;
                         SectionTitle { text: "角色"; }
                         if root.chat-character-options.length > 0 : ListView {
                             vertical-stretch: 5;
                             for name[i] in root.chat-character-options: Rectangle {
                                 height: 38px;
-                                border-radius: Theme.radius;
-                                background: i == root.chat-character-index ? #1C1F25 : (ta-char.has-hover ? #14161A : transparent);
+                                border-radius: Tokens.radius-s;
+                                background: i == root.chat-character-index ? Tokens.surface-selected : (ta-char.has-hover ? Tokens.list-hover : transparent);
                                 border-width: i == root.chat-character-index ? 1px : 0px;
-                                border-color: #2F333A;
+                                border-color: Tokens.hairline-selected;
+                                animate background { duration: Tokens.dur-press; easing: ease-out; }
                                 ta-char := TouchArea {
                                     mouse-cursor: pointer;
                                     clicked => { root.select-chat-character(i); }
                                 }
                                 HorizontalLayout {
                                     padding-left: 12px;
-                                    padding-right: 8px;
+                                    padding-right: Tokens.sp-2;
                                     Text {
                                         text: name;
-                                        color: i == root.chat-character-index ? Theme.accent : Theme.text-2;
-                                        font-size: 13px;
+                                        color: i == root.chat-character-index ? Tokens.accent : Tokens.text-2;
+                                        font-size: Tokens.fs-m;
                                         vertical-alignment: center;
                                         overflow: elide;
                                     }
                                 }
                             }
                         }
-                        if root.chat-character-options.length == 0: Text {
-                            text: "还没有角色。\n请前往「角色」页创建或铸造。";
-                            color: Theme.text-3;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            horizontal-alignment: center;
+                        if root.chat-character-options.length == 0: EmptyState {
+                            glyph: "◇";
+                            title: "还没有角色";
+                            sub-text: "请前往「角色」页创建或铸造。";
+                            action-text: "去创建角色";
+                            action => { root.current-page = 1; }
                         }
                         Rectangle { height: 1px; background: Theme.hairline; }
                         HorizontalLayout {
-                            spacing: 8px;
+                            spacing: Tokens.sp-2;
                             SectionTitle { text: "会话"; vertical-alignment: center; }
                             Rectangle { horizontal-stretch: 1; }
                             SecondaryBtn {
                                 text: "新对话";
+                                small: true;
                                 height: 26px;
                                 min-width: 60px;
                                 clicked => { root.new-session(); }
@@ -288,37 +352,80 @@ export component App inherits Window {
                             vertical-stretch: 6;
                             for s[i] in root.chat-sessions: Rectangle {
                                 height: 40px;
-                                border-radius: Theme.radius;
-                                background: i == root.chat-session-index ? #1C1F25 : (ta-sess.has-hover ? #14161A : transparent);
+                                border-radius: Tokens.radius-s;
+                                background: i == root.chat-session-index ? Tokens.surface-selected : (ta-sess.has-hover ? Tokens.list-hover : transparent);
                                 border-width: i == root.chat-session-index ? 1px : 0px;
-                                border-color: #2F333A;
+                                border-color: Tokens.hairline-selected;
+                                animate background { duration: Tokens.dur-press; easing: ease-out; }
                                 ta-sess := TouchArea {
                                     mouse-cursor: pointer;
-                                    clicked => { root.select-session(i); }
+                                    clicked => { root.select-session(s.id); }
                                 }
-                                VerticalLayout {
-                                    alignment: center;
+                                // 「新对话」占位：左侧白色指示条
+                                if s.id == -1 : Rectangle {
+                                    x: 4px;
+                                    y: (parent.height - 18px) / 2;
+                                    width: 2px;
+                                    height: 18px;
+                                    border-radius: 1px;
+                                    background: Tokens.accent;
+                                }
+                                HorizontalLayout {
                                     padding-left: 12px;
-                                    padding-right: 8px;
-                                    spacing: 1px;
-                                    Text {
-                                        text: s.title;
-                                        color: i == root.chat-session-index ? Theme.text : Theme.text-2;
-                                        font-size: 12px;
-                                        overflow: elide;
+                                    padding-right: 6px;
+                                    spacing: 6px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 1px;
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            if s.id == -1 : Badge {
+                                                text: "草稿";
+                                                variant: 0;
+                                                height: 16px;
+                                                min-width: 40px;
+                                            }
+                                            Text {
+                                                text: s.title;
+                                                color: i == root.chat-session-index ? Tokens.text : Tokens.text-2;
+                                                font-size: Tokens.fs-s;
+                                                overflow: elide;
+                                            }
+                                        }
+                                        Text {
+                                            text: s.time;
+                                            color: Tokens.text-3;
+                                            font-size: Tokens.fs-2xs;
+                                        }
                                     }
-                                    Text {
-                                        text: s.time;
-                                        color: Theme.text-3;
-                                        font-size: 10px;
+                                    // 悬停浮现的删除小按钮（占位项不显示）
+                                    if s.id != -1 && ta-sess.has-hover : VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            width: 22px;
+                                            height: 22px;
+                                            border-radius: Tokens.radius-xs;
+                                            background: del-ta.has-hover ? Tokens.danger-bg-hover : transparent;
+                                            del-ta := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => { root.delete-session(s.id); }
+                                                Text {
+                                                    text: "×";
+                                                    color: del-ta.has-hover ? Tokens.danger : Tokens.text-3;
+                                                    font-size: Tokens.fs-s;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                         if root.chat-sessions.length == 0: Text {
-                            text: "选择角色后，这里会出现会话列表。";
-                            color: Theme.text-3;
-                            font-size: 12px;
+                            text: "选择角色后，这里会出现会话列表；\n点「新对话」可立即开始一段新的谈话。";
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-s;
                             wrap: word-wrap;
                             horizontal-alignment: center;
                         }
@@ -330,35 +437,35 @@ export component App inherits Window {
                     // 顶栏：当前角色
                     Rectangle {
                         height: 58px;
-                        background: Theme.surface;
+                        background: Tokens.surface;
                         border-width: 1px;
                         border-color: Theme.hairline;
                         HorizontalLayout {
-                            padding-left: 20px;
-                            padding-right: 20px;
+                            padding-left: Tokens.sp-5;
+                            padding-right: Tokens.sp-5;
                             spacing: 10px;
                             VerticalLayout {
                                 alignment: center;
                                 spacing: 2px;
                                 HorizontalLayout {
-                                    spacing: 8px;
+                                    spacing: Tokens.sp-2;
                                     Text {
                                         text: root.chat-character-name != "" ? root.chat-character-name : "未选择角色";
-                                        color: Theme.text;
-                                        font-size: 15px;
+                                        color: Tokens.text;
+                                        font-size: Tokens.fs-l;
                                         font-weight: 700;
                                     }
                                     Text {
                                         text: root.chat-character-title;
-                                        color: Theme.text-3;
-                                        font-size: 12px;
+                                        color: Tokens.text-3;
+                                        font-size: Tokens.fs-s;
                                         vertical-alignment: center;
                                     }
                                 }
                                 Text {
                                     text: root.chat-trait-line != "" ? "特质 · " + root.chat-trait-line : "对话时自动注入角色卡、活跃特质与记忆";
-                                    color: Theme.text-3;
-                                    font-size: 11px;
+                                    color: Tokens.text-3;
+                                    font-size: Tokens.fs-xs;
                                     overflow: elide;
                                 }
                             }
@@ -366,114 +473,180 @@ export component App inherits Window {
                         }
                     }
                     // API 未配置引导条
-                    if !root.api-ready : Rectangle {
-                        height: 44px;
-                        background: #14161B;
-                        border-width: 1px;
-                        border-color: #2C2F36;
-                        HorizontalLayout {
-                            padding-left: 18px;
-                            padding-right: 14px;
-                            spacing: 10px;
-                            alignment: center;
-                            Text {
-                                text: "尚未配置模型 API，暂时无法对话。";
-                                color: Theme.text-2;
-                                font-size: 12px;
-                                vertical-alignment: center;
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                            SecondaryBtn {
-                                text: "前往设置";
-                                height: 28px;
-                                clicked => { root.goto-settings(); }
-                            }
-                        }
+                    if !root.api-ready : Banner {
+                        text: "尚未配置模型 API，暂时无法对话。";
+                        action => { root.goto-settings(); }
                     }
 
-                    // 消息列表
+                    // 消息列表（贴底跟随；用户上滚越线即解除，出现「回到底部」浮钮）
                     if root.chat-character-index >= 0 : Rectangle {
                         vertical-stretch: 1;
-                        ListView {
+                        msg-list := ListView {
                             vertical-stretch: 1;
-                            for m in root.chat-messages: VerticalLayout {
+                            changed content-height => {
+                                if root.chat-stick-bottom {
+                                    msg-list.content-y = Math.max(0px, msg-list.content-height - msg-list.visible-height);
+                                }
+                            }
+                            changed content-y => {
+                                root.chat-stick-bottom =
+                                    msg-list.content-height - msg-list.visible-height - msg-list.content-y <= 56px;
+                            }
+                            for m[i] in root.chat-messages: VerticalLayout {
                                 padding: 3px;
                                 padding-left: 18px;
                                 padding-right: 18px;
                                 HorizontalLayout {
                                     alignment: m.is-user ? end : start;
                                     bub := Rectangle {
-                                        width: Math.min(parent.width - 72px, txt.preferred-width + 36px);
+                                        width: Math.min(parent.width - 72px, 640px, txt.preferred-width + 36px);
                                         height: Math.max(blay.preferred-height, 42px);
                                         border-radius: 12px;
-                                        background: m.is-user ? #1B1E24 : (m.failed ? #241B1C : #121419);
+                                        background: m.is-user ? Tokens.bubble-user-bg : (m.failed ? Tokens.danger-bg : Tokens.bubble-ai-bg);
                                         border-width: 1px;
-                                        border-color: m.failed ? #4A3234 : (m.is-user ? #2B2F36 : #22252B);
-                                        drop-shadow-blur: m.is-user ? 0px : 20px;
-                                        drop-shadow-color: #0FFFFFFF;
+                                        border-color: m.failed ? Tokens.danger-border : (m.is-user ? Tokens.bubble-user-border : Tokens.bubble-ai-border);
+                                        drop-shadow-blur: m.is-user || m.failed ? 0px : 20px;
+                                        drop-shadow-color: Tokens.shadow-bubble;
+                                        drop-shadow-offset-y: 2px;
+                                        // 悬停显示时间戳
+                                        bub-ta := TouchArea { }
                                         blay := VerticalLayout {
                                             padding: 11px;
-                                            spacing: 4px;
+                                            spacing: Tokens.sp-1;
                                             txt := Text {
                                                 text: m.content;
-                                                color: m.is-user ? Theme.text : (m.failed ? #DC9A9D : #DDE0E4);
-                                                font-size: 13px;
+                                                color: m.is-user ? Tokens.text : (m.failed ? Tokens.danger-text : Tokens.bubble-ai-text);
+                                                font-size: Tokens.fs-m;
                                                 wrap: word-wrap;
                                             }
-                                            if m.streaming : Text {
-                                                text: "··· 生成中";
-                                                color: Theme.text-3;
-                                                font-size: 10px;
+                                            if m.streaming : StreamingDots { }
+                                            if m.failed : HorizontalLayout {
+                                                spacing: Tokens.sp-2;
+                                                alignment: start;
+                                                DangerBtn {
+                                                    text: "重试";
+                                                    small: true;
+                                                    height: 22px;
+                                                    min-width: 44px;
+                                                    clicked => { root.retry-message(i); }
+                                                }
+                                            }
+                                            if m.time != "" && bub-ta.has-hover : Text {
+                                                text: m.time;
+                                                color: Tokens.text-faint;
+                                                font-size: Tokens.fs-2xs;
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+                        // 已选角色但尚无消息：发送第一条的引导
+                        if root.chat-messages.length == 0 : VerticalLayout {
+                            vertical-stretch: 1;
+                            EmptyState {
+                                glyph: "◌";
+                                title: "发送第一条消息";
+                                sub-text: "对话将自动注入角色卡、活跃特质与召回的记忆。";
+                            }
+                        }
+                        // 回到底部浮钮（仅上滚脱离贴底时出现）
+                        if !root.chat-stick-bottom && root.chat-messages.length > 0 : Rectangle {
+                            x: parent.width - 52px;
+                            y: parent.height - 52px;
+                            width: 36px;
+                            height: 36px;
+                            border-radius: 18px;
+                            background: Tokens.panel-float;
+                            border-width: 1px;
+                            border-color: Tokens.banner-border;
+                            opacity: 0;
+                            animate opacity { duration: 180ms; easing: ease-out; }
+                            init => { self.opacity = 1; }
+                            jump-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.chat-stick-bottom = true;
+                                    msg-list.content-y = Math.max(0px, msg-list.content-height - msg-list.visible-height);
+                                }
+                            }
+                            Text {
+                                text: "↓";
+                                color: Tokens.text-2;
+                                font-size: Tokens.fs-s;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
                     }
                     if root.chat-character-index < 0 : Rectangle {
                         vertical-stretch: 1;
                         VerticalLayout {
-                            alignment: center;
-                            spacing: 10px;
-                            Text {
-                                text: "从左侧选择一位角色";
-                                color: Theme.text;
-                                font-size: 18px;
-                                font-weight: 700;
-                                horizontal-alignment: center;
-                            }
-                            Text {
-                                text: "对话将自动注入角色卡、活跃特质与召回的记忆。";
-                                color: Theme.text-3;
-                                font-size: 12px;
-                                horizontal-alignment: center;
+                            vertical-stretch: 1;
+                            EmptyState {
+                                glyph: "◌";
+                                title: "从左侧选择一位角色";
+                                sub-text: "对话将自动注入角色卡、活跃特质与召回的记忆。";
+                                action-text: "去创建角色";
+                                action => { root.current-page = 1; }
+                                secondary-text: "前往设置";
+                                secondary-action => { root.goto-settings(); }
                             }
                         }
                     }
 
-                    // 输入区
+                    // 输入区：busy 期间仍可预写下一条；Ctrl+Enter 发送
                     Rectangle {
                         height: 108px;
-                        background: Theme.surface;
+                        background: Tokens.surface;
                         border-width: 1px;
                         border-color: Theme.hairline;
-                        HorizontalLayout {
-                            padding: 14px;
-                            spacing: 12px;
-                            TextEdit {
-                                vertical-stretch: 1;
-                                text <=> root.chat-input-text;
-                                wrap: word-wrap;
-                                enabled: root.chat-character-index >= 0 && !root.chat-busy;
+                        // Ctrl+Enter 发送：capture 拦截须位于 TextEdit 的祖先链上
+                        composer-fs := FocusScope {
+                            focus-on-click: false;
+                            capture-key-pressed(event) => {
+                                if (event.text == Key.Return && (event.modifiers.control || event.modifiers.alt)) {
+                                    root.send-message(root.chat-input-text);
+                                    return accept;
+                                }
+                                return reject;
                             }
-                            VerticalLayout {
-                                alignment: center;
-                                width: 88px;
-                                PrimaryBtn {
-                                    text: root.chat-busy ? "生成中" : "发送";
-                                    enabled: root.chat-character-index >= 0 && !root.chat-busy && root.chat-input-text != "";
-                                    clicked => { root.send-message(root.chat-input-text); }
+                            HorizontalLayout {
+                                padding: Tokens.sp-3;
+                                spacing: Tokens.sp-3;
+                                TextEdit {
+                                    vertical-stretch: 1;
+                                    text <=> root.chat-input-text;
+                                    wrap: word-wrap;
+                                    enabled: root.chat-character-index >= 0;
+                                    font-size: Tokens.fs-m;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    width: 88px;
+                                    spacing: Tokens.sp-1;
+                                    // 发送 ↔ 停止 交叉淡化
+                                    if !root.chat-busy : PrimaryBtn {
+                                        opacity: 0;
+                                        animate opacity { duration: Tokens.dur-hover; easing: ease-out; }
+                                        init => { self.opacity = 1; }
+                                        text: "发送";
+                                        enabled: root.chat-character-index >= 0 && root.chat-input-text != "";
+                                        clicked => { root.send-message(root.chat-input-text); }
+                                    }
+                                    if root.chat-busy : DangerBtn {
+                                        opacity: 0;
+                                        animate opacity { duration: Tokens.dur-hover; easing: ease-out; }
+                                        init => { self.opacity = 1; }
+                                        text: "停止";
+                                        clicked => { root.stop-generation(); }
+                                    }
+                                    Text {
+                                        text: root.chat-busy ? "生成中 · 可继续输入" : "Ctrl+Enter 发送";
+                                        color: root.chat-busy ? Tokens.text-3 : Tokens.text-faint;
+                                        font-size: Tokens.fs-2xs;
+                                        horizontal-alignment: center;
+                                    }
                                 }
                             }
                         }
@@ -485,17 +658,22 @@ export component App inherits Window {
             // 第 1 页：角色（列表 / 编辑 / 铸造）
             // =========================================================
             if root.current-page == 1 : HorizontalLayout {
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-page; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => { self.opacity = 1; }
+
                 // 左：角色卡列表
                 VerticalLayout {
                     width: 320px;
-                    padding: 16px;
+                    padding: Tokens.sp-4;
                     spacing: 10px;
                     HorizontalLayout {
-                        spacing: 8px;
+                        spacing: Tokens.sp-2;
                         SectionTitle { text: "角色档案"; vertical-alignment: center; }
                         Rectangle { horizontal-stretch: 1; }
                         SecondaryBtn {
                             text: "新建角色";
+                            small: true;
                             height: 26px;
                             clicked => { root.new-character(); }
                         }
@@ -503,22 +681,23 @@ export component App inherits Window {
                     if root.characters.length > 0 : ListView {
                         vertical-stretch: 1;
                         for c in root.characters: Card {
+                            elevated-hover: true;
                             height: 104px;
                             VerticalLayout {
-                                padding: 14px;
+                                padding: Tokens.sp-4;
                                 spacing: 5px;
                                 HorizontalLayout {
-                                    spacing: 8px;
+                                    spacing: Tokens.sp-2;
                                     Text {
                                         text: c.name;
-                                        color: Theme.text;
-                                        font-size: 15px;
+                                        color: Tokens.text;
+                                        font-size: Tokens.fs-l;
                                         font-weight: 700;
                                     }
                                     Text {
                                         text: c.title;
-                                        color: Theme.text-3;
-                                        font-size: 11px;
+                                        color: Tokens.text-3;
+                                        font-size: Tokens.fs-xs;
                                         vertical-alignment: center;
                                         overflow: elide;
                                     }
@@ -526,27 +705,29 @@ export component App inherits Window {
                                 }
                                 Text {
                                     text: (c.origin != "" ? c.origin : "出身未述") + (c.faction != "" ? " · " + c.faction : "");
-                                    color: Theme.text-2;
-                                    font-size: 11px;
+                                    color: Tokens.text-2;
+                                    font-size: Tokens.fs-xs;
                                     overflow: elide;
                                 }
                                 Text {
                                     text: c.trait-line != "" ? c.trait-line : "暂无活跃特质";
-                                    color: Theme.text-3;
-                                    font-size: 11px;
+                                    color: Tokens.text-3;
+                                    font-size: Tokens.fs-xs;
                                     overflow: elide;
                                 }
                                 HorizontalLayout {
-                                    spacing: 8px;
-                                    padding-top: 4px;
+                                    spacing: Tokens.sp-2;
+                                    padding-top: Tokens.sp-1;
                                     SecondaryBtn {
                                         text: "编辑";
+                                        small: true;
                                         height: 24px;
                                         min-width: 52px;
                                         clicked => { root.edit-character(c.id); }
                                     }
                                     DangerBtn {
                                         text: "删除";
+                                        small: true;
                                         height: 24px;
                                         min-width: 52px;
                                         clicked => { root.delete-character(c.id); }
@@ -554,21 +735,19 @@ export component App inherits Window {
                                 }
                             }
                         }
-                        }
-                        if root.characters.length == 0: Text {
-                            text: "还没有角色。\n可在右侧手工创建，或粘贴素材「铸造」。";
-                            color: Theme.text-3;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            horizontal-alignment: center;
-                        }
                     }
+                    if root.characters.length == 0: EmptyState {
+                        glyph: "◇";
+                        title: "还没有角色";
+                        sub-text: "可在右侧手工创建，或粘贴素材「铸造」。";
+                    }
+                }
                 Rectangle { width: 1px; background: Theme.hairline; vertical-stretch: 1; }
 
                 // 右：编辑器 + 铸造
                 VerticalLayout {
                     vertical-stretch: 1;
-                    padding: 20px;
+                    padding: Tokens.sp-5;
                     spacing: 14px;
 
                     // —— 编辑器 ——
@@ -578,7 +757,7 @@ export component App inherits Window {
                             padding: 18px;
                             spacing: 10px;
                             HorizontalLayout {
-                                spacing: 8px;
+                                spacing: Tokens.sp-2;
                                 SectionTitle {
                                     text: root.editing-character-id >= 0 ? "编辑角色（#" + root.editing-character-id + "）" : "新建角色";
                                     vertical-alignment: center;
@@ -588,16 +767,19 @@ export component App inherits Window {
                             HorizontalLayout {
                                 spacing: 10px;
                                 VerticalLayout {
-                                    spacing: 4px;
+                                    spacing: Tokens.sp-1;
                                     horizontal-stretch: 1;
-                                    FieldLabel { text: "姓名"; }
+                                    FieldLabel {
+                                        text: "姓名";
+                                        error: root.editor-name == "" && root.editor-name-touched;
+                                    }
                                     LineEdit {
                                         text <=> root.editor-name;
                                         placeholder-text: "如：玄铃";
                                     }
                                 }
                                 VerticalLayout {
-                                    spacing: 4px;
+                                    spacing: Tokens.sp-1;
                                     horizontal-stretch: 1;
                                     FieldLabel { text: "称号"; }
                                     LineEdit {
@@ -609,7 +791,7 @@ export component App inherits Window {
                             HorizontalLayout {
                                 spacing: 10px;
                                 VerticalLayout {
-                                    spacing: 4px;
+                                    spacing: Tokens.sp-1;
                                     horizontal-stretch: 1;
                                     FieldLabel { text: "出身"; }
                                     LineEdit {
@@ -618,7 +800,7 @@ export component App inherits Window {
                                     }
                                 }
                                 VerticalLayout {
-                                    spacing: 4px;
+                                    spacing: Tokens.sp-1;
                                     horizontal-stretch: 1;
                                     FieldLabel { text: "阵营"; }
                                     LineEdit {
@@ -628,7 +810,7 @@ export component App inherits Window {
                                 }
                             }
                             VerticalLayout {
-                                spacing: 4px;
+                                spacing: Tokens.sp-1;
                                 vertical-stretch: 1;
                                 FieldLabel { text: "特质（每行一条，格式：特质名：描述）"; }
                                 TextEdit {
@@ -636,13 +818,18 @@ export component App inherits Window {
                                     text <=> root.editor-traits;
                                     wrap: word-wrap;
                                 }
+                                if root.editor-traits-hint != "" : Text {
+                                    text: root.editor-traits-hint;
+                                    color: root.editor-traits-hint-bad ? Tokens.danger-text : Tokens.text-3;
+                                    font-size: Tokens.fs-2xs;
+                                }
                             }
                             HorizontalLayout {
                                 spacing: 10px;
                                 alignment: end;
                                 SecondaryBtn {
                                     text: "清空";
-                                    clicked => { root.new-character(); }
+                                    clicked => { root.reset-editor-form(); }
                                 }
                                 PrimaryBtn {
                                     text: "保存角色";
@@ -659,16 +846,22 @@ export component App inherits Window {
                         VerticalLayout {
                             padding: 18px;
                             spacing: 10px;
+                            // 未配置 API：与对话页同款引导横幅（卡内形态）
+                            if !root.api-ready : Banner {
+                                border-radius: Tokens.radius-s;
+                                text: "尚未配置模型 API：配置后即可铸造。";
+                                action => { root.goto-settings(); }
+                            }
                             Text {
                                 text: "铸造 · 从素材生成角色卡";
-                                color: Theme.text;
-                                font-size: 14px;
+                                color: Tokens.text;
+                                font-size: Tokens.fs-m;
                                 font-weight: 700;
                             }
                             Text {
                                 text: "粘贴角色设定素材，调用模型提炼结构化角色卡（姓名 / 称号 / 出身 / 阵营 / 特质）。";
-                                color: Theme.text-3;
-                                font-size: 11px;
+                                color: Tokens.text-3;
+                                font-size: Tokens.fs-xs;
                                 wrap: word-wrap;
                             }
                             TextEdit {
@@ -676,19 +869,57 @@ export component App inherits Window {
                                 text <=> root.forge-material;
                                 wrap: word-wrap;
                             }
-                            if root.forge-preview != "" : Rectangle {
-                                height: 96px;
-                                border-radius: Theme.radius;
-                                background: #0D0F12;
+                            // 铸造失败常驻错误行（与 Toast 并存，可关闭）
+                            if root.forge-error != "" : Rectangle {
+                                height: 30px;
+                                border-radius: Tokens.radius-s;
+                                background: Tokens.danger-bg;
                                 border-width: 1px;
-                                border-color: #2C2F36;
+                                border-color: Tokens.danger-border;
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 6px;
+                                    spacing: Tokens.sp-2;
+                                    Text {
+                                        text: root.forge-error;
+                                        color: Tokens.danger-text;
+                                        font-size: Tokens.fs-xs;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Rectangle {
+                                        width: 22px;
+                                        height: 22px;
+                                        border-radius: Tokens.radius-xs;
+                                        background: err-close-ta.has-hover ? Tokens.danger-bg-hover : transparent;
+                                        err-close-ta := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.dismiss-forge-error(); }
+                                            Text {
+                                                text: "×";
+                                                color: err-close-ta.has-hover ? Tokens.danger : Tokens.danger-text;
+                                                font-size: Tokens.fs-s;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if root.forge-preview != "" : Rectangle {
+                                height: 140px;
+                                border-radius: Tokens.radius-s;
+                                background: Tokens.forge-preview-bg;
+                                border-width: 1px;
+                                border-color: Tokens.banner-border;
                                 ScrollView {
                                     VerticalLayout {
                                         padding: 10px;
                                         Text {
                                             text: root.forge-preview;
-                                            color: Theme.text-2;
-                                            font-size: 12px;
+                                            color: Tokens.text-2;
+                                            font-size: Tokens.fs-s;
                                             wrap: word-wrap;
                                         }
                                     }
@@ -699,8 +930,14 @@ export component App inherits Window {
                                 alignment: end;
                                 PrimaryBtn {
                                     text: root.forge-busy ? "铸造中……" : "调用模型铸造";
-                                    enabled: !root.forge-busy && root.forge-material != "";
+                                    enabled: !root.forge-busy && root.api-ready && root.forge-material != "";
                                     clicked => { root.start-forge(); }
+                                }
+                                SecondaryBtn {
+                                    text: "送入编辑器";
+                                    small: true;
+                                    enabled: root.forge-preview != "";
+                                    clicked => { root.forge-to-editor(); }
                                 }
                                 SecondaryBtn {
                                     text: "确认入库";
@@ -717,26 +954,36 @@ export component App inherits Window {
             // 第 2 页：领地（入住角色 + 近况时间线）
             // =========================================================
             if root.current-page == 2 : VerticalLayout {
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-page; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => { self.opacity = 1; }
+
                 padding: 18px;
                 spacing: 14px;
 
                 // 顶栏：世界时钟 + 操作
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: Tokens.sp-3;
                     VerticalLayout {
                         alignment: center;
                         spacing: 2px;
                         Text {
                             text: "领地 · 近况";
-                            color: Theme.text;
-                            font-size: 16px;
+                            color: Tokens.text;
+                            font-size: Tokens.fs-xl;
                             font-weight: 800;
                         }
                         Text {
                             text: root.world-clock-text != "" ? root.world-clock-text : "世界时钟启动中";
-                            color: Theme.text-3;
-                            font-size: 11px;
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
                         }
+                    }
+                    if root.timeline-busy : Text {
+                        text: root.timeline-progress-text != "" ? root.timeline-progress-text : "生成中……";
+                        color: Tokens.text-3;
+                        font-size: Tokens.fs-xs;
+                        vertical-alignment: center;
                     }
                     Rectangle { horizontal-stretch: 1; }
                     PrimaryBtn {
@@ -745,52 +992,59 @@ export component App inherits Window {
                         clicked => { root.generate-timeline(); }
                     }
                 }
-                if !root.api-ready : Text {
+                if !root.api-ready : Banner {
                     text: "尚未配置模型 API：配置后即可为入住角色生成生活近况。";
-                    color: Theme.text-3;
-                    font-size: 12px;
                 }
 
-                // 入住角色卡
+                // 入住角色卡（整卡可点 → 跳对话页与该角色交谈）
                 Flickable {
                     height: 128px;
                     content-width: resident-row.preferred-width;
                     resident-row := HorizontalLayout {
                         alignment: start;
-                        spacing: 12px;
-                        for c in root.residents: Card {
-                                width: 218px;
-                                VerticalLayout {
-                                    padding: 14px;
-                                    spacing: 4px;
-                                    alignment: start;
-                                    Text {
-                                        text: c.name;
-                                        color: Theme.text;
-                                        font-size: 14px;
-                                        font-weight: 700;
-                                    }
-                                    Text {
-                                        text: c.title != "" ? c.title : "无称号";
-                                        color: Theme.text-3;
-                                        font-size: 11px;
-                                    }
-                                    Rectangle { height: 8px; }
-                                    Text {
-                                        text: c.trait-line != "" ? c.trait-line : "暂无活跃特质";
-                                        color: Theme.text-2;
-                                        font-size: 11px;
-                                        wrap: word-wrap;
-                                        overflow: elide;
-                                    }
+                        spacing: Tokens.sp-3;
+                        for c in root.residents: res-card := Card {
+                            elevated-hover: true;
+                            width: 218px;
+                            clicked => { root.open-character-chat(c.id); }
+                            VerticalLayout {
+                                padding: Tokens.sp-4;
+                                spacing: Tokens.sp-1;
+                                alignment: start;
+                                Text {
+                                    text: c.name;
+                                    color: Tokens.text;
+                                    font-size: Tokens.fs-m;
+                                    font-weight: 700;
+                                }
+                                Text {
+                                    text: c.title != "" ? c.title : "无称号";
+                                    color: Tokens.text-3;
+                                    font-size: Tokens.fs-xs;
+                                }
+                                Rectangle { height: Tokens.sp-2; }
+                                Text {
+                                    text: c.trait-line != "" ? c.trait-line : "暂无活跃特质";
+                                    color: Tokens.text-2;
+                                    font-size: Tokens.fs-xs;
+                                    wrap: word-wrap;
+                                }
+                                Rectangle { vertical-stretch: 1; }
+                                Text {
+                                    text: "对话 →";
+                                    color: Tokens.text-3;
+                                    font-size: Tokens.fs-2xs;
+                                    opacity: res-card.hovered ? 1 : 0;
+                                    animate opacity { duration: Tokens.dur-hover; easing: ease-out; }
                                 }
                             }
                         }
-                    if root.residents.length == 0: Text {
-                        text: "领地尚无入住角色：在「角色」页建档后自动入住。";
-                        color: Theme.text-3;
-                        font-size: 12px;
                     }
+                }
+                if root.residents.length == 0 : EmptyState {
+                    glyph: "▲";
+                    title: "领地尚无入住角色";
+                    sub-text: "在「角色」页建档后自动入住。";
                 }
 
                 Rectangle { height: 1px; background: Theme.hairline; }
@@ -800,49 +1054,49 @@ export component App inherits Window {
                 if root.timeline.length > 0 : ListView {
                     vertical-stretch: 1;
                     for t in root.timeline: HorizontalLayout {
-                        padding: 8px;
-                        padding-left: 4px;
-                        spacing: 12px;
+                        padding: Tokens.sp-2;
+                        padding-left: Tokens.sp-1;
+                        spacing: Tokens.sp-3;
                         // 时间点：白色小星，弱光晕
                         Rectangle {
                             width: 30px;
                             y: 6px;
                             height: 30px;
                             border-radius: 15px;
-                            background: #14161B;
+                            background: Tokens.brand-bg;
                             border-width: 1px;
-                            border-color: #2E3138;
+                            border-color: Tokens.brand-border;
                             drop-shadow-blur: 14px;
-                            drop-shadow-color: #26FFFFFF;
+                            drop-shadow-color: Tokens.glow-1;
                             Text {
                                 text: "·";
-                                color: Theme.accent;
+                                color: Tokens.accent;
                                 font-size: 16px;
                                 font-weight: 800;
                             }
                         }
                         VerticalLayout {
                             spacing: 3px;
-                            padding-top: 4px;
+                            padding-top: Tokens.sp-1;
                             HorizontalLayout {
-                                spacing: 8px;
+                                spacing: Tokens.sp-2;
                                 Text {
                                     text: t.character-name;
-                                    color: Theme.text;
-                                    font-size: 12px;
+                                    color: Tokens.text;
+                                    font-size: Tokens.fs-s;
                                     font-weight: 700;
                                 }
                                 Text {
                                     text: t.time;
-                                    color: Theme.text-3;
-                                    font-size: 10px;
+                                    color: Tokens.text-3;
+                                    font-size: Tokens.fs-2xs;
                                     vertical-alignment: center;
                                 }
                             }
                             Text {
                                 text: t.content;
-                                color: Theme.text-2;
-                                font-size: 12px;
+                                color: Tokens.text-2;
+                                font-size: Tokens.fs-s;
                                 wrap: word-wrap;
                             }
                         }
@@ -851,81 +1105,208 @@ export component App inherits Window {
                 if root.timeline.length == 0 : Rectangle {
                     vertical-stretch: 1;
                     VerticalLayout {
-                        alignment: center;
-                        Text {
-                            text: "还没有近况记录";
-                            color: Theme.text-3;
-                            font-size: 13px;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: "点击右上「生成近况」，模型将依据人设与最近记忆撰写生活记录。";
-                            color: #4A4E55;
-                            font-size: 11px;
-                            horizontal-alignment: center;
+                        vertical-stretch: 1;
+                        EmptyState {
+                            glyph: "·";
+                            title: "还没有近况记录";
+                            sub-text: "点击右上「生成近况」，模型将依据人设与最近记忆撰写生活记录。";
                         }
                     }
                 }
             }
 
             // =========================================================
-            // 第 3 页：星图（ling-render 离屏帧 + 节点详情）
+            // 第 3 页：星图（ling-render 离屏帧 + 缩放平移 + 节点详情）
             // =========================================================
             if root.current-page == 3 : HorizontalLayout {
-                // 星图视口
-                Rectangle {
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-page; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => { self.opacity = 1; }
+
+                // 星图视口：显示层缩放 / 平移（帧内容 1180×760，与 starmap.rs 常量一致）
+                sm-viewport := Rectangle {
                     vertical-stretch: 1;
-                    background: Theme.bg-deep;
+                    background: Tokens.bg-deep;
                     border-width: 1px;
                     border-color: Theme.hairline;
-                    Image {
-                        x: 0; y: 0;
-                        width: 100%;
-                        height: 100%;
+
+                    // contain 基准缩放与显示矩形（应用 zoom 档位后按视口居中 + 平移偏移）
+                    property <float> contain-scale: Math.min(self.width / 1180px, self.height / 760px);
+                    property <length> disp-w: 1180px * self.contain-scale * root.starmap-zoom;
+                    property <length> disp-h: 760px * self.contain-scale * root.starmap-zoom;
+                    sm-img := Image {
+                        x: (sm-viewport.width - sm-viewport.disp-w) / 2 + root.starmap-pan-x;
+                        y: (sm-viewport.height - sm-viewport.disp-h) / 2 + root.starmap-pan-y;
+                        width: sm-viewport.disp-w;
+                        height: sm-viewport.disp-h;
                         source: root.starmap-frame;
-                        image-fit: ImageFit.contain;
+                        image-fit: ImageFit.fill;
                     }
-                    // 点击拾取（覆盖全视口；把视口尺寸与点击坐标一并交给 Rust）
+
+                    // 拖拽平移 + 点击拾取（拖动超过 4px 视为平移，不触发拾取）
+                    property <length> last-x;
+                    property <length> last-y;
+                    property <bool> dragged;
                     sm-touch := TouchArea {
+                        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.default;
+                        pointer-event => {
+                            if (self.pressed) {
+                                sm-viewport.last-x = self.mouse-x;
+                                sm-viewport.last-y = self.mouse-y;
+                                sm-viewport.dragged = false;
+                            }
+                        }
+                        moved => {
+                            root.starmap-pan-x += self.mouse-x - sm-viewport.last-x;
+                            root.starmap-pan-y += self.mouse-y - sm-viewport.last-y;
+                            sm-viewport.last-x = self.mouse-x;
+                            sm-viewport.last-y = self.mouse-y;
+                            if (Math.abs(self.mouse-x - self.pressed-x) > 4px
+                                || Math.abs(self.mouse-y - self.pressed-y) > 4px) {
+                                sm-viewport.dragged = true;
+                            }
+                        }
                         clicked => {
-                            root.starmap-clicked(self.width / 1px, self.height / 1px,
-                                                 self.pressed-x / 1px, self.pressed-y / 1px);
+                            if (!sm-viewport.dragged) {
+                                // 视口坐标 → 帧像素坐标（按当前显示矩形反解）
+                                root.starmap-clicked(
+                                    (self.pressed-x - sm-img.x) / sm-img.width * 1180,
+                                    (self.pressed-y - sm-img.y) / sm-img.height * 760);
+                            }
+                        }
+                        scroll-event(event) => {
+                            if (event.delta-y > 0px) {
+                                root.starmap-zoom-index = Math.min(3, root.starmap-zoom-index + 1);
+                            } else if (event.delta-y < 0px) {
+                                root.starmap-zoom-index = Math.max(0, root.starmap-zoom-index - 1);
+                            }
+                            return accept;
                         }
                     }
-                    // 状态遮罩（未就绪 / 失败）
-                    if !root.starmap-running : Rectangle {
-                        background: #060708D9;
+
+                    // 选中光圈：命中星点的帧坐标映射回视口，随呼吸发光
+                    if root.starmap-sel-x >= 0 : Rectangle {
+                        x: sm-img.x + root.starmap-sel-x * (sm-img.width / 1180px) * 1px - 13px;
+                        y: sm-img.y + root.starmap-sel-y * (sm-img.height / 760px) * 1px - 13px;
+                        width: 26px;
+                        height: 26px;
+                        border-radius: 13px;
+                        border-width: 1.5px;
+                        border-color: Tokens.accent;
+                        drop-shadow-blur: 16px;
+                        drop-shadow-color: Tokens.glow-phase ? Tokens.glow-3 : Tokens.glow-2;
+                        animate drop-shadow-color { duration: Tokens.dur-breathe-half; easing: ease-in-out; }
+                        opacity: 0;
+                        animate opacity { duration: Tokens.dur-hover; easing: ease-out; }
+                        init => { self.opacity = 1; }
+                    }
+
+                    // 左上状态条：节点 / 连线数 + 操作提示
+                    if root.starmap-running && root.starmap-has-frame : VerticalLayout {
+                        x: 14px;
+                        y: 12px;
+                        spacing: 2px;
+                        Text {
+                            text: root.starmap-stats;
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
+                        }
+                        Text {
+                            text: "点击星点查看详情 · 拖拽平移 · 滚轮缩放";
+                            color: Tokens.text-hint;
+                            font-size: Tokens.fs-2xs;
+                        }
+                    }
+
+                    // 右下缩放控件组：＋ － ⟲（⟲ 回到 fit 视图）
+                    Rectangle {
+                        x: parent.width - 52px;
+                        y: parent.height - 140px;
+                        width: 36px;
+                        border-radius: Tokens.radius-m;
+                        background: Tokens.panel-float;
+                        border-width: 1px;
+                        border-color: Tokens.banner-border;
+                        VerticalLayout {
+                            zoom-in-ta := TouchArea {
+                                height: 32px;
+                                mouse-cursor: pointer;
+                                clicked => { root.starmap-zoom-index = Math.min(3, root.starmap-zoom-index + 1); }
+                                Text {
+                                    text: "＋";
+                                    color: zoom-in-ta.has-hover ? Tokens.text : Tokens.text-2;
+                                    font-size: Tokens.fs-l;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Rectangle { height: 1px; background: Theme.hairline; }
+                            zoom-out-ta := TouchArea {
+                                height: 32px;
+                                mouse-cursor: pointer;
+                                clicked => { root.starmap-zoom-index = Math.max(0, root.starmap-zoom-index - 1); }
+                                Text {
+                                    text: "－";
+                                    color: zoom-out-ta.has-hover ? Tokens.text : Tokens.text-2;
+                                    font-size: Tokens.fs-l;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Rectangle { height: 1px; background: Theme.hairline; }
+                            zoom-reset-ta := TouchArea {
+                                height: 32px;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.starmap-zoom-index = 1;
+                                    root.starmap-pan-x = 0px;
+                                    root.starmap-pan-y = 0px;
+                                }
+                                Text {
+                                    text: "⟲";
+                                    color: zoom-reset-ta.has-hover ? Tokens.text : Tokens.text-2;
+                                    font-size: Tokens.fs-l;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Text {
+                                text: root.zoom-labels[root.starmap-zoom-index];
+                                color: Tokens.text-3;
+                                font-size: Tokens.fs-2xs;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    // 未就绪遮罩（未装载 / 首帧未到 / 失败）
+                    if !root.starmap-running || !root.starmap-has-frame : Rectangle {
+                        background: Tokens.viewport-veil;
                         Text {
                             text: root.starmap-status;
-                            color: Theme.text-2;
-                            font-size: 13px;
+                            color: Tokens.text-2;
+                            font-size: Tokens.fs-m;
                             horizontal-alignment: center;
                             wrap: word-wrap;
                         }
-                    }
-                    Text {
-                        x: 14px;
-                        y: 12px;
-                        text: "星图 · 点击星点查看详情";
-                        color: #555A62;
-                        font-size: 11px;
                     }
                 }
 
                 // 右栏：角色选择 / 详情 / 图例
                 VerticalLayout {
                     width: 292px;
-                    padding: 16px;
-                    spacing: 12px;
+                    padding: Tokens.sp-4;
+                    spacing: Tokens.sp-3;
                     SectionTitle { text: "星图角色"; }
                     if root.starmap-character-options.length > 0 : ListView {
                         vertical-stretch: 3;
                         for name[i] in root.starmap-character-options: Rectangle {
                             height: 36px;
-                            border-radius: Theme.radius;
-                            background: i == root.starmap-character-index ? #1C1F25 : (ta-smchar.has-hover ? #14161A : transparent);
+                            border-radius: Tokens.radius-s;
+                            background: i == root.starmap-character-index ? Tokens.surface-selected : (ta-smchar.has-hover ? Tokens.list-hover : transparent);
                             border-width: i == root.starmap-character-index ? 1px : 0px;
-                            border-color: #2F333A;
+                            border-color: Tokens.hairline-selected;
+                            animate background { duration: Tokens.dur-press; easing: ease-out; }
                             ta-smchar := TouchArea {
                                 mouse-cursor: pointer;
                                 clicked => { root.starmap-select-character(i); }
@@ -934,8 +1315,8 @@ export component App inherits Window {
                                 padding-left: 12px;
                                 Text {
                                     text: name;
-                                    color: i == root.starmap-character-index ? Theme.accent : Theme.text-2;
-                                    font-size: 13px;
+                                    color: i == root.starmap-character-index ? Tokens.accent : Tokens.text-2;
+                                    font-size: Tokens.fs-m;
                                     vertical-alignment: center;
                                 }
                             }
@@ -943,8 +1324,8 @@ export component App inherits Window {
                     }
                     if root.starmap-character-options.length == 0: Text {
                         text: "尚无角色可装载。";
-                        color: Theme.text-3;
-                        font-size: 12px;
+                        color: Tokens.text-3;
+                        font-size: Tokens.fs-s;
                         wrap: word-wrap;
                     }
                     SecondaryBtn {
@@ -956,20 +1337,20 @@ export component App inherits Window {
                     Card {
                         vertical-stretch: 4;
                         VerticalLayout {
-                            padding: 14px;
-                            spacing: 8px;
+                            padding: Tokens.sp-4;
+                            spacing: Tokens.sp-2;
                             Text {
                                 text: root.starmap-detail-title;
-                                color: Theme.text;
-                                font-size: 13px;
+                                color: Tokens.text;
+                                font-size: Tokens.fs-m;
                                 font-weight: 700;
                                 wrap: word-wrap;
                             }
                             Rectangle { height: 1px; background: Theme.hairline; }
                             Text {
                                 text: root.starmap-detail-body;
-                                color: Theme.text-2;
-                                font-size: 12px;
+                                color: Tokens.text-2;
+                                font-size: Tokens.fs-s;
                                 wrap: word-wrap;
                                 vertical-stretch: 1;
                             }
@@ -977,8 +1358,8 @@ export component App inherits Window {
                     }
                     Text {
                         text: "图例：最大最亮为核心（角色），暖白为特质，冷白为弧光，青白小点为事件记忆；连线为归属与因果。";
-                        color: #4A4E55;
-                        font-size: 10px;
+                        color: Tokens.text-faint;
+                        font-size: Tokens.fs-2xs;
                         wrap: word-wrap;
                     }
                 }
@@ -988,14 +1369,18 @@ export component App inherits Window {
             // 第 4 页：设置
             // =========================================================
             if root.current-page == 4 : VerticalLayout {
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-page; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => { self.opacity = 1; }
+
                 padding: 22px;
                 spacing: 14px;
                 alignment: start;
 
                 Text {
                     text: "设置";
-                    color: Theme.text;
-                    font-size: 16px;
+                    color: Tokens.text;
+                    font-size: Tokens.fs-xl;
                     font-weight: 800;
                 }
 
@@ -1006,20 +1391,20 @@ export component App inherits Window {
                         spacing: 10px;
                         Text {
                             text: "模型接入（OpenAI 兼容）";
-                            color: Theme.text;
-                            font-size: 13px;
+                            color: Tokens.text;
+                            font-size: Tokens.fs-m;
                             font-weight: 700;
                         }
                         Text {
                             text: "仅接受 http/https 且可公网访问的地址；凭据只保存在本机数据目录，不随仓库分发。";
-                            color: Theme.text-3;
-                            font-size: 11px;
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
                             wrap: word-wrap;
                         }
                         HorizontalLayout {
                             spacing: 10px;
                             VerticalLayout {
-                                spacing: 4px;
+                                spacing: Tokens.sp-1;
                                 horizontal-stretch: 2;
                                 FieldLabel { text: "接口地址（baseURL）"; }
                                 LineEdit {
@@ -1028,7 +1413,7 @@ export component App inherits Window {
                                 }
                             }
                             VerticalLayout {
-                                spacing: 4px;
+                                spacing: Tokens.sp-1;
                                 horizontal-stretch: 1;
                                 FieldLabel { text: "模型"; }
                                 LineEdit {
@@ -1038,8 +1423,9 @@ export component App inherits Window {
                             }
                         }
                         VerticalLayout {
-                            spacing: 4px;
-                            FieldLabel { text: "API Key"; }
+                            spacing: Tokens.sp-1;
+                            // 匿名网关：key 可留空（与 quick_validate / is_ready 的判定一致）
+                            FieldLabel { text: "API Key"; note: "可选"; }
                             LineEdit {
                                 text <=> root.settings-api-key;
                                 placeholder-text: "留空表示匿名网关";
@@ -1059,11 +1445,24 @@ export component App inherits Window {
                                 clicked => { root.save-settings(); }
                             }
                         }
-                        if root.conn-result != "" : Text {
-                            text: root.conn-result;
-                            color: Theme.text-2;
-                            font-size: 12px;
-                            wrap: word-wrap;
+                        // 连通结果：状态点 + 着色文案（成功银白 / 失败暗红）
+                        if root.conn-result != "" : HorizontalLayout {
+                            spacing: Tokens.sp-2;
+                            Rectangle {
+                                width: 6px;
+                                height: 6px;
+                                y: 5px;
+                                border-radius: 3px;
+                                background: root.conn-state == 3 ? Tokens.danger
+                                    : root.conn-state == 2 ? Tokens.accent-dim : Tokens.text-3;
+                            }
+                            Text {
+                                text: root.conn-result;
+                                color: root.conn-state == 3 ? Tokens.danger-text
+                                    : root.conn-state == 2 ? Tokens.accent-dim : Tokens.text-2;
+                                font-size: Tokens.fs-s;
+                                wrap: word-wrap;
+                            }
                         }
                     }
                 }
@@ -1075,32 +1474,40 @@ export component App inherits Window {
                         spacing: 10px;
                         Text {
                             text: "数据";
-                            color: Theme.text;
-                            font-size: 13px;
+                            color: Tokens.text;
+                            font-size: Tokens.fs-m;
                             font-weight: 700;
                         }
                         Text {
                             text: "数据目录：" + root.data-dir-text;
-                            color: Theme.text-3;
-                            font-size: 11px;
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
                             wrap: word-wrap;
                         }
                         HorizontalLayout {
-                            spacing: 10px;
+                            spacing: Tokens.sp-2;
                             SecondaryBtn {
-                                text: "导出全量 JSON";
+                                text: root.data-op-busy ? "导出中…" : "导出全量 JSON";
+                                enabled: !root.data-op-busy;
                                 clicked => { root.export-data(); }
                             }
-                            SecondaryBtn {
-                                text: "导入（替换现有数据）";
-                                enabled: root.import-path-text != "";
-                                clicked => { root.import-data(root.import-path-text); }
+                            if root.export-path-text != "" : SecondaryBtn {
+                                text: "复制路径";
+                                small: true;
+                                enabled: !root.data-op-busy;
+                                clicked => { root.copy-export-path(); }
+                            }
+                            if root.export-path-text != "" : SecondaryBtn {
+                                text: "导入此文件";
+                                small: true;
+                                enabled: !root.data-op-busy;
+                                clicked => { root.import-path-text = root.export-path-text; }
                             }
                         }
                         if root.export-path-text != "" : Text {
                             text: "最近导出：" + root.export-path-text;
-                            color: Theme.text-2;
-                            font-size: 11px;
+                            color: Tokens.text-2;
+                            font-size: Tokens.fs-xs;
                             wrap: word-wrap;
                         }
                         LineEdit {
@@ -1110,17 +1517,22 @@ export component App inherits Window {
                         HorizontalLayout {
                             spacing: 10px;
                             alignment: start;
+                            SecondaryBtn {
+                                text: root.data-op-busy ? "导入中…" : "导入（替换现有数据）";
+                                enabled: !root.data-op-busy && root.import-path-text != "";
+                                clicked => { root.import-data(root.import-path-text); }
+                            }
                             DangerBtn {
                                 text: "清空全部数据";
+                                enabled: !root.data-op-busy;
                                 clicked => { root.clear-data(); }
                             }
-                            Text {
-                                text: "清空会删除所有角色、会话、记忆与近况；模型配置保留。";
-                                color: Theme.text-3;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                wrap: word-wrap;
-                            }
+                        }
+                        Text {
+                            text: "清空会删除所有角色、会话、记忆与近况；模型配置保留。";
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
+                            wrap: word-wrap;
                         }
                     }
                 }
@@ -1132,14 +1544,14 @@ export component App inherits Window {
                         spacing: 6px;
                         Text {
                             text: "关于「灵」";
-                            color: Theme.text;
-                            font-size: 13px;
+                            color: Tokens.text;
+                            font-size: Tokens.fs-m;
                             font-weight: 700;
                         }
                         Text {
                             text: "v0.1.0 · 数据保存在本地 SQLite，AI 能力由你配置的模型网关提供。多身份系统仍在规划中（见侧栏「身份」）。";
-                            color: Theme.text-3;
-                            font-size: 11px;
+                            color: Tokens.text-3;
+                            font-size: Tokens.fs-xs;
                             wrap: word-wrap;
                         }
                     }
@@ -1151,36 +1563,40 @@ export component App inherits Window {
             // 第 5 页：身份（占位入口）
             // =========================================================
             if root.current-page == 5 : VerticalLayout {
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-page; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => { self.opacity = 1; }
+
                 alignment: center;
-                spacing: 12px;
+                spacing: Tokens.sp-3;
                 Rectangle {
                     height: 56px;
                     border-radius: 28px;
-                    background: #14161B;
+                    background: Tokens.brand-bg;
                     border-width: 1px;
-                    border-color: #2E3138;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #26FFFFFF;
+                    border-color: Tokens.brand-border;
+                    drop-shadow-blur: 22px;
+                    drop-shadow-color: Tokens.glow-2;
                     HorizontalLayout {
                         alignment: center;
                         Text {
                             text: "◑";
-                            color: Theme.accent;
-                            font-size: 22px;
+                            color: Tokens.accent;
+                            font-size: Tokens.fs-2xl;
                         }
                     }
                 }
                 Text {
                     text: "多身份系统 · 规划中";
-                    color: Theme.text;
-                    font-size: 17px;
+                    color: Tokens.text;
+                    font-size: Tokens.fs-xl;
                     font-weight: 800;
                     horizontal-alignment: center;
                 }
                 Text {
                     text: "未来将支持一位角色拥有多重身份，以及身份间的切换与记忆隔离。\n当前版本仅保留此占位入口。";
-                    color: Theme.text-3;
-                    font-size: 12px;
+                    color: Tokens.text-3;
+                    font-size: Tokens.fs-s;
                     horizontal-alignment: center;
                     wrap: word-wrap;
                 }
@@ -1188,68 +1604,116 @@ export component App inherits Window {
         }
     }
 
-    // ================= 全局 Toast =================
+    // ================= 全局 Toast（点击关闭；错误类带红点） =================
     if root.toast-text != "" : Rectangle {
         y: parent.height - 70px;
         x: (parent.width - self.width) / 2;
         height: 38px;
-        width: Math.min(parent.width - 80px, toast-txt.preferred-width + 44px);
+        width: Math.min(parent.width - 80px, toast-txt.preferred-width + 56px);
         border-radius: 19px;
-        background: #E9EBEEF2;
+        background: Tokens.toast-bg;
         drop-shadow-blur: 30px;
-        drop-shadow-color: #22000000;
-        toast-txt := Text {
-            text: root.toast-text;
-            color: #101216;
-            font-size: 12px;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-            overflow: elide;
+        drop-shadow-color: Tokens.shadow-toast;
+        drop-shadow-offset-y: 6px;
+        // 入场：透明度 + 自下 8px 位移
+        opacity: 0;
+        animate opacity { duration: Tokens.dur-panel; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+        init => { self.opacity = 1; }
+        toast-ta := TouchArea {
+            clicked => { root.dismiss-toast(); }
+        }
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            spacing: Tokens.sp-2;
+            alignment: center;
+            if root.toast-is-error : Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: Tokens.danger;
+            }
+            toast-txt := Text {
+                text: root.toast-text;
+                color: Tokens.on-toast;
+                font-size: Tokens.fs-s;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
         }
     }
 
-    // ================= 全局确认对话框 =================
+    // ================= 全局确认对话框（Esc 取消 / Enter 确认） =================
     if root.confirm-visible : Rectangle {
-        background: #000000C0;
+        background: Tokens.overlay;
         TouchArea { }   // 吞掉遮罩点击
-        Rectangle {
-            width: 420px;
-            height: 188px;
-            border-radius: Theme.radius-lg;
-            background: Theme.surface;
-            border-width: 1px;
-            border-color: #2C2F36;
-            drop-shadow-blur: 40px;
-            drop-shadow-color: #33000000;
-            VerticalLayout {
-                padding: 20px;
-                spacing: 14px;
-                Text {
-                    text: "请确认操作";
-                    color: Theme.text;
-                    font-size: 14px;
-                    font-weight: 700;
+        init => { confirm-fs.focus(); }
+        // 包裹面板的祖先 FocusScope：按钮 / 面板内未处理的按键冒泡至此
+        confirm-fs := FocusScope {
+            focus-on-click: false;
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    root.confirm-cancel();
+                    return accept;
                 }
-                Text {
-                    text: root.confirm-text;
-                    color: Theme.text-2;
-                    font-size: 12px;
-                    wrap: word-wrap;
-                    vertical-stretch: 1;
+                if (event.text == Key.Return) {
+                    root.confirm-accept();
+                    return accept;
                 }
-                HorizontalLayout {
-                    spacing: 10px;
-                    alignment: end;
-                    SecondaryBtn {
-                        text: "取消";
-                        clicked => { root.confirm-cancel(); }
+                return reject;
+            }
+            panel := Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2 + 8px;
+                width: 420px;
+                height: Math.max(188px, confirm-vl.preferred-height + 40px);
+                border-radius: Tokens.radius-l;
+                background: Tokens.surface;
+                border-width: 1px;
+                border-color: Tokens.banner-border;
+                drop-shadow-blur: 44px;
+                drop-shadow-color: Tokens.shadow-modal;
+                drop-shadow-offset-y: 10px;
+                // 入场：透明度 + 自下 8px 位移
+                opacity: 0;
+                animate opacity { duration: Tokens.dur-panel; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                animate y { duration: Tokens.dur-panel; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+                init => {
+                    self.opacity = 1;
+                    self.y = (parent.height - self.height) / 2;
+                }
+                confirm-vl := VerticalLayout {
+                    padding: Tokens.sp-5;
+                    spacing: 14px;
+                    Text {
+                        text: root.confirm-title;
+                        color: Tokens.text;
+                        font-size: Tokens.fs-m;
+                        font-weight: 700;
                     }
-                    DangerBtn {
-                        text: "确认执行";
-                        clicked => { root.confirm-accept(); }
+                    Text {
+                        text: root.confirm-text;
+                        color: Tokens.text-2;
+                        font-size: Tokens.fs-s;
+                        wrap: word-wrap;
+                        vertical-stretch: 1;
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+                        SecondaryBtn {
+                            text: "取消";
+                            clicked => { root.confirm-cancel(); }
+                        }
+                        DangerBtn {
+                            text: "确认执行";
+                            clicked => { root.confirm-accept(); }
+                        }
                     }
                 }
             }
         }
     }
+}
 }

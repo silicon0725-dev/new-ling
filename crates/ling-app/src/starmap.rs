@@ -1,9 +1,10 @@
 //! 星图后台线程：按帧驱动 ling-render（步进布局 + 离屏渲染），
 //! 把 RGBA 帧转成 `slint::SharedPixelBuffer` 送回 UI 线程成像；
-//! 同时承担节点拾取（点击坐标 → 最近星点 → 详情面板）。
+//! 同时承担节点拾取（点击帧坐标 → 最近星点 → 详情面板 + 选中光圈坐标）。
 //!
-//! 视口映射约定：slint 侧 `Image { image-fit: contain }`，本模块用
-//! [`contain_map`] 复刻同样的等比居中数学，保证拾取与显示一致。
+//! 视口映射约定：显示端的 contain / 缩放 / 平移全部在 slint 侧完成，
+//! UI 把点击位置反解为**帧像素坐标**后传入；本模块只做帧内拾取，
+//! 命中时把星点帧坐标随详情事件回传，slint 侧据此定位选中光圈。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
@@ -21,7 +22,7 @@ use crate::chat::assemble_character;
 use crate::state::{AppEvent, AppShared};
 use crate::util;
 
-/// 离屏帧尺寸（显示端等比缩放，与拾取数学解耦）
+/// 离屏帧尺寸（显示端等比缩放，与拾取数学解耦；ui/app.slint 星图视口按此反解坐标）
 pub const FRAME_WIDTH: u32 = 1180;
 pub const FRAME_HEIGHT: u32 = 760;
 
@@ -29,8 +30,8 @@ pub const FRAME_HEIGHT: u32 = 760;
 pub enum StarmapCmd {
     /// 装载指定角色的星图（节点 = 角色 + 特质 + 弧光 + 事件记忆）
     Load(i64),
-    /// 视口内点击拾取（视口宽高 + 点击坐标，均为像素）
-    Pick { vw: f32, vh: f32, x: f32, y: f32 },
+    /// 视口内点击拾取（slint 已按缩放 / 平移反解为帧像素坐标）
+    Pick { fx: f32, fy: f32 },
 }
 
 /// 星点元信息（拾取后展示在详情面板）
@@ -38,24 +39,6 @@ pub enum StarmapCmd {
 struct NodeMeta {
     title: String,
     body: String,
-}
-
-/// contain 布局反解：视口 (vw,vh) 内等比居中放置 iw×ih 图像，
-/// 点击 (x,y) 落在图像内部时返回图像像素坐标。
-pub fn contain_map(vw: f32, vh: f32, iw: f32, ih: f32, x: f32, y: f32) -> Option<(f32, f32)> {
-    if vw <= 0.0 || vh <= 0.0 || iw <= 0.0 || ih <= 0.0 {
-        return None;
-    }
-    let scale = (vw / iw).min(vh / ih);
-    let ox = (vw - iw * scale) / 2.0;
-    let oy = (vh - ih * scale) / 2.0;
-    let px = (x - ox) / scale;
-    let py = (y - oy) / scale;
-    if (0.0..iw).contains(&px) && (0.0..ih).contains(&py) {
-        Some((px, py))
-    } else {
-        None
-    }
 }
 
 /// RGBA8 字节缓冲 → slint 像素缓冲（尺寸不符时返回 None）。
@@ -162,13 +145,21 @@ fn run(
                 Ok(StarmapCmd::Load(character_id)) => {
                     handle_load(&shared, &mut renderer, &mut clean, &mut meta, character_id);
                 }
-                Ok(StarmapCmd::Pick { vw, vh, x, y }) => {
+                Ok(StarmapCmd::Pick { fx, fy }) => {
                     if let (Some(r), Some(snap)) = (&renderer, &clean) {
-                        if let Some(detail) = pick(r, snap, &meta, vw, vh, x, y) {
-                            shared.emit(AppEvent::StarmapDetail {
-                                title: detail.0,
-                                body: detail.1,
-                            });
+                        match pick(r, snap, &meta, fx, fy) {
+                            Some((title, body, px, py)) => {
+                                shared.emit(AppEvent::StarmapDetail { title, body, px, py });
+                            }
+                            // 点击空白：发「未选中」事件，UI 复位详情面板并隐藏光圈
+                            None => {
+                                shared.emit(AppEvent::StarmapDetail {
+                                    title: String::new(),
+                                    body: String::new(),
+                                    px: -1.0,
+                                    py: -1.0,
+                                });
+                            }
                         }
                     }
                 }
@@ -213,6 +204,7 @@ fn handle_load(
             shared.emit(AppEvent::StarmapStatus {
                 running: false,
                 text: "该角色已不存在，星图未装载。".to_string(),
+                stats: String::new(),
             });
             return;
         };
@@ -270,6 +262,7 @@ fn handle_load(
                 shared.emit(AppEvent::StarmapStatus {
                     running: false,
                     text: format!("无法初始化 GPU 渲染器（{e}）：星图页暂不可用，其余功能不受影响。"),
+                    stats: String::new(),
                 });
                 return;
             }
@@ -278,25 +271,23 @@ fn handle_load(
     if let Some(r) = renderer.as_mut() {
         r.load_snapshot(snapshot);
         *clean = Some(sanitized);
+        let stats = format!("{} 节点 · {} 连线", r.node_count(), r.edge_count());
         shared.emit(AppEvent::StarmapStatus {
             running: true,
-            text: format!("星图已装载：{} 节点 / {} 连线", r.node_count(), r.edge_count()),
+            text: format!("星图已装载：{stats}"),
+            stats,
         });
     }
 }
 
-/// 拾取：视口坐标 → 帧像素 → 最近星点（含可点击半径余量）→ 元信息
+/// 拾取：帧像素坐标 → 最近星点（含可点击半径余量）→ 元信息 + 星点帧坐标
 fn pick(
     renderer: &StarmapRenderer,
     snapshot: &StarSnapshot,
     meta: &[NodeMeta],
-    vw: f32,
-    vh: f32,
-    x: f32,
-    y: f32,
-) -> Option<(String, String)> {
-    let (px, py) =
-        contain_map(vw, vh, FRAME_WIDTH as f32, FRAME_HEIGHT as f32, x, y)?;
+    px: f32,
+    py: f32,
+) -> Option<(String, String, f32, f32)> {
     let stars = &renderer.simulation().stars;
     if stars.is_empty() {
         return None;
@@ -328,7 +319,9 @@ fn pick(
         title: "未知星点".to_string(),
         body: "该星点暂无关联信息。".to_string(),
     });
-    Some((m.title, m.body))
+    // 命中星点的屏幕（帧）坐标，供 UI 侧定位选中光圈
+    let [nx, ny] = fit.world_to_pixel(stars[idx].x as f32, stars[idx].y as f32);
+    Some((m.title, m.body, nx, ny))
 }
 
 #[cfg(test)]
@@ -336,17 +329,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contain_map_matches_center_and_bounds() {
-        // 视口与图像同比例：整幅铺满，原样映射
-        assert_eq!(contain_map(100.0, 100.0, 100.0, 100.0, 10.0, 20.0), Some((10.0, 20.0)));
-        // 视口更宽：左右留白 25，等比 scale=1
-        assert_eq!(contain_map(150.0, 100.0, 100.0, 100.0, 50.0, 10.0), Some((25.0, 10.0)));
-        // scale = 150/100；点击中心 → 图像中心
-        let (px, py) = contain_map(100.0, 150.0, 100.0, 100.0, 50.0, 75.0).unwrap();
-        assert!((px - 50.0).abs() < 1e-4 && (py - 50.0).abs() < 1e-4);
-        // 图像外点击 → None
-        assert_eq!(contain_map(150.0, 100.0, 100.0, 100.0, 10.0, 50.0), None);
-        assert_eq!(contain_map(0.0, 100.0, 100.0, 100.0, 0.0, 0.0), None);
+    fn frame_constants_match_ui_viewport() {
+        // ui/app.slint 的星图视口按这两个常量做坐标反解，改动必须两侧同步
+        assert_eq!(FRAME_WIDTH, 1180);
+        assert_eq!(FRAME_HEIGHT, 760);
     }
 
     #[test]

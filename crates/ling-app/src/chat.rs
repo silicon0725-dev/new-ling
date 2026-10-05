@@ -1,5 +1,7 @@
 //! 对话后台任务：组装上下文 → LLM 流式增量 → 持久化与特质演化。
+//! 支持用户中途停止：停止时保留已生成部分入库。
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
@@ -114,6 +116,7 @@ pub fn spawn(
                 shared.emit(AppEvent::ChatFinished {
                     session_id,
                     error: Some(e.to_string()),
+                    stopped: false,
                 });
                 return;
             }
@@ -128,6 +131,7 @@ pub fn spawn(
                 shared.emit(AppEvent::ChatFinished {
                     session_id,
                     error: Some("角色已不存在".to_string()),
+                    stopped: false,
                 });
                 return;
             };
@@ -160,13 +164,18 @@ pub fn spawn(
         let system = prompt::build_system_prompt(&character, &memories);
         let messages = build_llm_messages(system, &history, &user_text);
 
-        // —— 流式请求 ——
+        // —— 流式请求（每轮检查中止旗标，停止时保留已生成部分）——
         let mut reply = String::new();
         let stream_result = client.chat_stream(&messages).await;
-        let result = match stream_result {
+        let (result, stopped) = match stream_result {
             Ok(mut stream) => {
                 let mut outcome: Result<(), String> = Ok(());
+                let mut stopped = false;
                 while let Some(item) = stream.next().await {
+                    if shared.chat_cancel.load(Ordering::Relaxed) {
+                        stopped = true;
+                        break;
+                    }
                     match item {
                         Ok(delta) => {
                             reply.push_str(&delta);
@@ -181,12 +190,12 @@ pub fn spawn(
                         }
                     }
                 }
-                outcome
+                (outcome, stopped)
             }
-            Err(e) => Err(e.to_string()),
+            Err(e) => (Err(e.to_string()), false),
         };
 
-        // —— 结束后的持久化（仅在拿到非空回复时）——
+        // —— 结束后的持久化（仅在拿到非空回复时；主动停止同理保留部分）——
         match result {
             Ok(()) if !reply.trim().is_empty() => {
                 let now = util::now_ts();
@@ -195,6 +204,7 @@ pub fn spawn(
                     shared.emit(AppEvent::ChatFinished {
                         session_id,
                         error: Some(format!("回复入库失败：{e}")),
+                        stopped: false,
                     });
                     return;
                 }
@@ -227,18 +237,26 @@ pub fn spawn(
                 shared.emit(AppEvent::ChatFinished {
                     session_id,
                     error: None,
+                    stopped,
                 });
             }
             Ok(()) => {
+                // 空回复：主动停止视为正常结束（用户可能刚收到首字即停），否则报错
                 shared.emit(AppEvent::ChatFinished {
                     session_id,
-                    error: Some("模型返回了空回复".to_string()),
+                    error: if stopped {
+                        None
+                    } else {
+                        Some("模型返回了空回复".to_string())
+                    },
+                    stopped,
                 });
             }
             Err(msg) => {
                 shared.emit(AppEvent::ChatFinished {
                     session_id,
                     error: Some(msg),
+                    stopped: false,
                 });
             }
         }

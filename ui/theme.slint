@@ -1,160 +1,279 @@
 // 「灵」设计系统：深色单色（黑白灰）、克制的白色发光、细腻留白。
 // 仅使用无彩色；强调手段是「白」与「灰」的层级差，以及低透明度的白色光晕。
+// 色值唯一真源在 tokens.slint；本文件的 Theme 为兼容别名（旧代码不改也能编译）。
+
+import { Tokens } from "tokens.slint";
 
 export global Theme {
-    // —— 底色层次（由深到浅）——
-    out property <color> bg:        #0A0B0D;   // 窗体底色
-    out property <color> bg-deep:   #060708;   // 最深层（星图视口）
-    out property <color> rail:      #0D0E11;   // 侧栏 / 左栏
-    out property <color> surface:   #101216;   // 卡片 / 面板
-    out property <color> surface-2: #17191E;   // 次级面（悬浮、输入）
-    out property <color> hairline:  #24262C;   // 发丝分隔线
-
-    // —— 文字层次 ——
-    out property <color> text:      #EDEEF0;   // 主文字
-    out property <color> text-2:    #A7ABB3;   // 次文字
-    out property <color> text-3:    #6B7078;   // 弱文字 / 占位
-
-    // —— 强调（克制的白）——
-    out property <color> accent:    #FFFFFF;
-    out property <color> accent-dim:#C9CCD2;
-    out property <color> glow:      #59FFFFFF; // 白色光晕（低不透明度）
-
-    // —— 状态色（唯一的有彩：危险）——
-    out property <color> danger:    #D8555A;
-
+    // —— 底色（兼容别名）——
+    out property <color> bg:        Tokens.bg;
+    out property <color> bg-deep:   Tokens.bg-deep;
+    out property <color> rail:      Tokens.rail;
+    out property <color> surface:   Tokens.surface;
+    out property <color> surface-2: Tokens.surface-2;
+    out property <color> hairline:  Tokens.hairline;
+    // —— 文字 ——
+    out property <color> text:      Tokens.text;
+    out property <color> text-2:    Tokens.text-2;
+    out property <color> text-3:    Tokens.text-3;
+    // —— 强调 ——
+    out property <color> accent:    Tokens.accent;
+    out property <color> accent-dim: Tokens.accent-dim;
+    out property <color> glow:      Tokens.glow-3;
+    // —— 危险 ——
+    out property <color> danger:    Tokens.danger;
     // —— 尺寸 ——
-    out property <length> radius:    8px;
-    out property <length> radius-lg: 14px;
-    out property <length> pad:       22px;
-    out property <length> gap:       14px;
+    out property <length> radius:    Tokens.radius-s;
+    out property <length> radius-lg: Tokens.radius-l;
+    out property <length> pad:       Tokens.sp-6;
+    out property <length> gap:       Tokens.sp-3;
 }
 
 // 区块标题：小号灰色，克制分隔
 export component SectionTitle inherits Text {
-    color: Theme.text-3;
-    font-size: 12px;
+    color: Tokens.text-3;
+    font-size: Tokens.fs-s;
     height: 16px;
 }
 
-// 主按钮：近白底深色字，最重的一级操作
+// 流式三点指示：替代静态「··· 生成中」。三点错峰脉冲由 Tokens.glow-phase 驱动
+// （Rust 每 1400ms 翻转一次；每次翻转各点以 0/140/280ms 延迟做 700ms 单程过渡）
+export component StreamingDots inherits HorizontalLayout {
+    in property <color> dot-color: Tokens.text-2;
+    spacing: 5px;
+    for i in 3 : Rectangle {
+        width: 4px;
+        height: 4px;
+        border-radius: 2px;
+        background: root.dot-color;
+        opacity: Tokens.glow-phase ? 1 : 0.25;
+        animate opacity { duration: Tokens.dur-breathe-half; easing: ease-in-out; delay: 140ms * i; }
+    }
+}
+
+// 状态徽标：variant 0 中性 / 1 进行中 / 2 成功 / 3 失败（进行中状态点随 glow-phase 呼吸）
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <int> variant: 0;
+    height: 18px;
+    min-width: 46px;
+    border-radius: Tokens.radius-pill;
+    background: root.variant == 3 ? Tokens.danger-bg
+        : root.variant == 1 ? Tokens.badge-busy-bg
+        : root.variant == 2 ? Tokens.badge-ok-bg : Tokens.surface-2;
+    border-width: 1px;
+    border-color: root.variant == 3 ? Tokens.danger-border
+        : root.variant == 1 ? Tokens.hairline-strong
+        : root.variant == 2 ? Tokens.badge-ok-border : Tokens.badge-neutral-border;
+    HorizontalLayout {
+        padding-left: Tokens.sp-2;
+        padding-right: Tokens.sp-2;
+        alignment: center;
+        spacing: 5px;
+        if root.variant != 0 : Rectangle {
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: root.variant == 3 ? Tokens.danger
+                : root.variant == 1 ? Tokens.accent : Tokens.accent-dim;
+            opacity: root.variant == 1 ? (Tokens.glow-phase ? 1 : 0.4) : 1;
+            animate opacity { duration: Tokens.dur-breathe-half; easing: ease-in-out; }
+        }
+        Text {
+            text: root.text;
+            color: root.variant == 3 ? Tokens.danger-text
+                : root.variant == 1 ? Tokens.text-2
+                : root.variant == 2 ? Tokens.accent-dim : Tokens.text-3;
+            font-size: Tokens.fs-2xs;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// 主按钮：近白底深色字，最重的一级操作。small = 行内小号变体
 export component PrimaryBtn inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
+    in property <bool> small: false;
     callback clicked;
-    height: 34px;
-    min-width: 84px;
-    border-radius: Theme.radius;
-    background: root.enabled ? #E9EBEE : #23262B;
-    drop-shadow-blur: root.enabled ? 18px : 0px;
-    drop-shadow-color: #14FFFFFF;
-    drop-shadow-offset-y: 2px;
-    states [
-        hovered when root.enabled && ta.has-hover: { background: #FFFFFF; }
-        pressed when root.enabled && ta.pressed:   { background: #C6C9CE; }
-    ]
+    height: root.small ? 28px : 34px;
+    min-width: root.small ? 48px : 84px;
+    border-radius: root.small ? Tokens.radius-xs : Tokens.radius-s;
+    border-width: 1px;
+    border-color: btn-focus.has-focus ? Tokens.focus-ring : transparent;
+    background: root.enabled
+        ? (ta.pressed ? Tokens.accent-btn-pressed : (ta.has-hover ? Tokens.accent-btn-hover : Tokens.accent-btn))
+        : Tokens.btn-disabled-bg;
+    animate background { duration: Tokens.dur-press; easing: ease-out; }
+    drop-shadow-blur: root.enabled && btn-focus.has-focus ? 16px : (root.enabled ? 18px : 0px);
+    drop-shadow-color: btn-focus.has-focus ? Tokens.glow-3
+        : (ta.has-hover && root.enabled ? Tokens.shadow-primary-hover : Tokens.shadow-primary);
+    drop-shadow-offset-y: ta.has-hover && root.enabled ? 3px : 2px;
+    animate drop-shadow-color { duration: Tokens.dur-hover; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+    btn-focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == Key.Space) {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
     HorizontalLayout {
         alignment: center;
-        padding-left: 18px;
-        padding-right: 18px;
+        padding-left: root.small ? 10px : 18px;
+        padding-right: root.small ? 10px : 18px;
         Text {
             text: root.text;
             vertical-alignment: center;
-            color: root.enabled ? #0B0C0E : #62666E;
-            font-size: 13px;
+            color: root.enabled ? Tokens.on-accent : Tokens.on-accent-disabled;
+            font-size: root.small ? Tokens.fs-2xs : Tokens.fs-m;
             font-weight: 700;
         }
     }
 }
 
-// 次级按钮：描边幽灵按钮
+// 次级按钮：描边幽灵按钮。small = 行内小号变体
 export component SecondaryBtn inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
+    in property <bool> small: false;
     callback clicked;
-    height: 34px;
-    min-width: 84px;
-    border-radius: Theme.radius;
-    background: ta.has-hover && root.enabled ? #1B1E23 : transparent;
+    height: root.small ? 28px : 34px;
+    min-width: root.small ? 48px : 84px;
+    border-radius: root.small ? Tokens.radius-xs : Tokens.radius-s;
+    background: ta.has-hover && root.enabled ? Tokens.surface-hover : (ta.pressed && root.enabled ? Tokens.surface-pressed : transparent);
+    animate background { duration: Tokens.dur-press; easing: ease-out; }
     border-width: 1px;
-    border-color: root.enabled ? #34373E : #24262C;
-    states [
-        pressed when root.enabled && ta.pressed: { background: #22252B; }
-    ]
+    border-color: btn-focus.has-focus ? Tokens.focus-ring : (root.enabled ? Tokens.hairline-strong : Tokens.hairline);
+    animate border-color { duration: Tokens.dur-hover; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+    btn-focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == Key.Space) {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
     HorizontalLayout {
         alignment: center;
-        padding-left: 16px;
-        padding-right: 16px;
+        padding-left: root.small ? 10px : 16px;
+        padding-right: root.small ? 10px : 16px;
         Text {
             text: root.text;
             vertical-alignment: center;
-            color: root.enabled ? Theme.text : Theme.text-3;
-            font-size: 13px;
+            color: root.enabled ? Tokens.text : Tokens.text-3;
+            font-size: root.small ? Tokens.fs-2xs : Tokens.fs-m;
         }
     }
 }
 
-// 危险按钮：仅用暗红描边提示后果
+// 危险按钮：仅用暗红描边提示后果。small = 行内小号变体
 export component DangerBtn inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
+    in property <bool> small: false;
     callback clicked;
-    height: 34px;
-    min-width: 84px;
-    border-radius: Theme.radius;
-    background: transparent;
+    height: root.small ? 28px : 34px;
+    min-width: root.small ? 48px : 84px;
+    border-radius: root.small ? Tokens.radius-xs : Tokens.radius-s;
+    background: !root.enabled ? transparent
+        : (ta.pressed ? Tokens.danger-bg-pressed : (ta.has-hover ? Tokens.danger-bg-hover : transparent));
+    animate background { duration: Tokens.dur-press; easing: ease-out; }
     border-width: 1px;
-    border-color: #6E3A3D;
-    states [
-        hovered when root.enabled && ta.has-hover: { background: #2A1A1C; }
-        pressed when root.enabled && ta.pressed:   { background: #332023; }
-    ]
+    border-color: btn-focus.has-focus ? Tokens.focus-ring : Tokens.danger-border-btn;
+    animate border-color { duration: Tokens.dur-hover; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
+    btn-focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == Key.Space) {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
     HorizontalLayout {
         alignment: center;
-        padding-left: 16px;
-        padding-right: 16px;
+        padding-left: root.small ? 10px : 16px;
+        padding-right: root.small ? 10px : 16px;
         Text {
             text: root.text;
             vertical-alignment: center;
-            color: root.enabled ? Theme.danger : #5A4244;
-            font-size: 13px;
+            color: root.enabled ? Tokens.danger : Tokens.danger-text-disabled;
+            font-size: root.small ? Tokens.fs-2xs : Tokens.fs-m;
         }
     }
 }
 
-// 通用卡片：面板底 + 发丝描边 + 大圆角
+// 通用卡片：面板底 + 发丝描边 + 大圆角。
+// elevated-hover = 列表 / 入住等可交互卡：hover 时描边与阴影抬升
 export component Card inherits Rectangle {
-    background: Theme.surface;
-    border-radius: Theme.radius-lg;
+    in property <bool> elevated-hover: false;
+    out property <bool> hovered: card-ta.has-hover;
+    callback clicked;               // elevated-hover 时整卡可点
+    background: Tokens.surface;
+    border-radius: Tokens.radius-l;
     border-width: 1px;
-    border-color: Theme.hairline;
-    drop-shadow-blur: 26px;
-    drop-shadow-color: #0A00000F;
+    border-color: root.elevated-hover && card-ta.has-hover ? Tokens.hairline-strong : Tokens.hairline;
+    animate border-color { duration: Tokens.dur-hover; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+    drop-shadow-blur: root.elevated-hover && card-ta.has-hover ? 34px : 26px;
+    drop-shadow-color: root.elevated-hover && card-ta.has-hover ? Tokens.shadow-card-hover : Tokens.shadow-card;
+    drop-shadow-offset-y: root.elevated-hover && card-ta.has-hover ? 4px : 2px;
+    animate drop-shadow-color { duration: Tokens.dur-hover; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+    card-ta := TouchArea {
+        enabled: root.elevated-hover;
+        mouse-cursor: root.elevated-hover ? pointer : default;
+        clicked => { root.clicked(); }
+    }
 }
 
-// 输入框底：与 fluent-dark 标准控件搭配使用的标签
-export component FieldLabel inherits Text {
-    color: Theme.text-3;
-    font-size: 12px;
+// 字段标签：可带错误变体（danger 文字 + 行尾「必填」）与右侧弱注释（如「可选」）
+export component FieldLabel inherits HorizontalLayout {
+    in property <string> text;
+    in property <bool> error: false;
+    in property <string> note: "";
     height: 14px;
+    spacing: Tokens.sp-1;
+    Text {
+        text: root.text;
+        color: root.error ? Tokens.danger-text : Tokens.text-3;
+        font-size: Tokens.fs-s;
+    }
+    if root.error : Text {
+        text: "必填";
+        color: Tokens.danger-text;
+        font-size: Tokens.fs-2xs;
+        vertical-alignment: center;
+    }
+    Rectangle { horizontal-stretch: 1; }
+    if root.note != "" : Text {
+        text: root.note;
+        color: Tokens.text-faint;
+        font-size: Tokens.fs-2xs;
+        vertical-alignment: center;
+    }
 }
 
-// 侧边导航项：选中态以浅面 + 白字 + 白色字形强调
+// 侧边导航项：选中态以浅面 + 白字 + 白色指示条强调
 export component NavItem inherits Rectangle {
     in property <string> glyph;
     in property <string> label;
@@ -162,45 +281,147 @@ export component NavItem inherits Rectangle {
     in property <bool> active;
     callback activate;
     height: 40px;
-    border-radius: 10px;
-    background: root.active ? #1B1E24 : (nav-ta.has-hover ? #131519 : transparent);
-    states [
-        pressed when nav-ta.pressed: { background: #20242B; }
-    ]
+    border-radius: Tokens.radius-m;
+    border-width: 1px;
+    border-color: nav-focus.has-focus ? Tokens.focus-ring : transparent;
+    background: root.active ? Tokens.nav-active
+        : (nav-ta.pressed ? Tokens.nav-pressed : (nav-ta.has-hover ? Tokens.nav-hover : transparent));
+    animate background { duration: Tokens.dur-press; easing: ease-out; }
     nav-ta := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.activate(); }
     }
+    nav-focus := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == Key.Space) {
+                root.activate();
+                return accept;
+            }
+            return reject;
+        }
+    }
     HorizontalLayout {
         padding-left: 13px;
-        padding-right: 12px;
+        padding-right: Tokens.sp-3;
         spacing: 10px;
         Text {
             text: root.glyph;
-            color: root.active ? Theme.accent : #5C6169;
-            font-size: 13px;
+            color: root.active ? Tokens.accent : Tokens.nav-glyph;
+            font-size: Tokens.fs-m;
             vertical-alignment: center;
         }
         Text {
             text: root.label;
-            color: root.active ? Theme.text : #8F949C;
-            font-size: 13px;
+            color: root.active ? Tokens.text : Tokens.nav-label;
+            font-size: Tokens.fs-m;
             font-weight: root.active ? 700 : 400;
             vertical-alignment: center;
+            overflow: elide;
         }
         Rectangle { horizontal-stretch: 1; }
-        if root.badge != "" : Rectangle {
-            width: 46px;
-            height: 18px;
-            border-radius: 9px;
-            background: #17191E;
-            border-width: 1px;
-            border-color: #2B2E35;
-            Text {
-                text: root.badge;
-                color: Theme.text-3;
-                font-size: 9px;
-            }
+        if root.badge != "" : Badge {
+            text: root.badge;
+            variant: 0;
+        }
+    }
+}
+
+// 空态占位：图标 + 主 / 副文案 + 可选动作按钮（主路径 PrimaryBtn、次路径 SecondaryBtn）
+export component EmptyState inherits VerticalLayout {
+    in property <string> glyph;          // 字形：对话「◌」/ 角色「◇」/ 领地「▲」/ 时间线「·」/ 星图「★」
+    in property <string> title;
+    in property <string> sub-text: "";
+    in property <string> action-text: "";
+    in property <string> secondary-text: "";
+    callback action;
+    callback secondary-action;
+    alignment: center;
+    spacing: Tokens.sp-3;
+    Rectangle {
+        width: 44px;
+        height: 44px;
+        border-radius: 22px;
+        background: Tokens.brand-bg;
+        border-width: 1px;
+        border-color: Tokens.brand-border;
+        drop-shadow-blur: 22px;
+        drop-shadow-color: Tokens.glow-2;
+        Text {
+            text: root.glyph;
+            color: Tokens.text-3;
+            font-size: Tokens.fs-xl;
+        }
+    }
+    Text {
+        text: root.title;
+        color: Tokens.text;
+        font-size: Tokens.fs-xl;
+        font-weight: 700;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: root.sub-text;
+        color: Tokens.text-3;
+        font-size: Tokens.fs-s;
+        wrap: word-wrap;
+        max-width: 360px;
+        horizontal-alignment: center;
+    }
+    if root.action-text != "" || root.secondary-text != "" : HorizontalLayout {
+        spacing: Tokens.sp-2;
+        alignment: center;
+        if root.action-text != "" : PrimaryBtn {
+            text: root.action-text;
+            small: true;
+            height: 28px;
+            clicked => { root.action(); }
+        }
+        if root.secondary-text != "" : SecondaryBtn {
+            text: root.secondary-text;
+            small: true;
+            height: 28px;
+            clicked => { root.secondary-action(); }
+        }
+    }
+}
+
+// API 引导横幅：中性灰点 + 说明 + 「前往设置」；卡内嵌形态由使用处设置 border-radius
+export component Banner inherits Rectangle {
+    in property <string> text;
+    in property <bool> show-action: true;
+    in property <string> action-text: "前往设置";
+    callback action;
+    height: 44px;
+    background: Tokens.banner-bg;
+    border-width: 1px;
+    border-color: Tokens.banner-border;
+    opacity: 0;
+    animate opacity { duration: Tokens.dur-panel; easing: cubic-bezier(0.2, 0.7, 0.2, 1); }
+    init => { self.opacity = 1; }
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: Tokens.sp-3;
+        spacing: 10px;
+        alignment: center;
+        Rectangle {
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: Tokens.text-2;
+        }
+        Text {
+            text: root.text;
+            color: Tokens.text-2;
+            font-size: Tokens.fs-s;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if root.show-action : SecondaryBtn {
+            text: root.action-text;
+            small: true;
+            height: 28px;
+            clicked => { root.action(); }
         }
     }
 }

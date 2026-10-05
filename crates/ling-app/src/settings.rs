@@ -18,11 +18,10 @@ pub struct ApiSettings {
 }
 
 impl ApiSettings {
-    /// 三项齐备（去空白后非空）才视为「已配置」
+    /// 「已配置」判定：接口地址与模型必填，API Key 允许为空（匿名网关）。
+    /// 与 `quick_validate` 及设置页占位文案「留空表示匿名网关」保持一致。
     pub fn is_ready(&self) -> bool {
-        !self.base_url.trim().is_empty()
-            && !self.api_key.trim().is_empty()
-            && !self.model.trim().is_empty()
+        !self.base_url.trim().is_empty() && !self.model.trim().is_empty()
     }
 
     /// 保存前的轻量校验：非空 + http/https 前缀。
@@ -113,16 +112,24 @@ mod tests {
     }
 
     #[test]
-    fn ready_requires_all_fields() {
-        assert!(ApiSettings::default().is_ready() == false);
+    fn ready_requires_base_and_model_only() {
+        // 匿名网关：key 留空也应就绪（与占位文案 / quick_validate 三处一致）
+        assert!(!ApiSettings::default().is_ready());
         let mut s = ApiSettings {
             base_url: "https://gateway.example/v1".into(),
-            api_key: synthetic_key(24),
+            api_key: String::new(),
             model: "demo-model".into(),
         };
-        assert!(s.is_ready());
-        s.api_key = "  ".into();
+        assert!(s.is_ready(), "空 key（匿名网关）应视为已配置");
+        s.model = "  ".into();
         assert!(!s.is_ready());
+        s.model = "demo-model".into();
+        s.base_url = " ".into();
+        assert!(!s.is_ready());
+        // 带 key 的常规网关同样就绪
+        s.base_url = "https://gateway.example/v1".into();
+        s.api_key = synthetic_key(24);
+        assert!(s.is_ready());
     }
 
     #[test]

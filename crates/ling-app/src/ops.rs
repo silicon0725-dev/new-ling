@@ -83,7 +83,12 @@ pub fn spawn_timeline(runtime: &tokio::runtime::Runtime, shared: Arc<AppShared>)
 
         let mut ok = 0usize;
         let mut failed = 0usize;
-        for (character, scenes) in &snapshots {
+        let total = snapshots.len();
+        for (index, (character, scenes)) in snapshots.iter().enumerate() {
+            shared.emit(AppEvent::TimelineProgress {
+                index: index + 1,
+                total,
+            });
             let messages = timeline::timeline_messages(character, scenes);
             match client.chat(&messages).await {
                 Ok(text) => {
@@ -110,10 +115,14 @@ pub fn spawn_timeline(runtime: &tokio::runtime::Runtime, shared: Arc<AppShared>)
     });
 }
 
-/// 连通性测试：发一条极短消息验证 baseURL / apiKey / model 可用
-pub fn spawn_conn_test(runtime: &tokio::runtime::Runtime, shared: Arc<AppShared>) {
+/// 连通性测试：发一条极短消息验证 baseURL / apiKey / model 可用。
+/// `settings` 由调用方（bridge）从界面输入现场构造——所见即所测。
+pub fn spawn_conn_test(
+    runtime: &tokio::runtime::Runtime,
+    shared: Arc<AppShared>,
+    settings: crate::settings::ApiSettings,
+) {
     runtime.spawn(async move {
-        let settings = shared.settings_snapshot();
         let result = match OpenAiClient::new(
             settings.base_url.trim(),
             settings.api_key.trim(),
@@ -148,7 +157,7 @@ pub fn spawn_export(shared: Arc<AppShared>, dir: PathBuf) {
                 crate::export::export_bundle(&store)?
             };
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建导出目录失败：{e}"))?;
-            let path = dir.join(format!("灵-全量备份-{}.json", util::now_ts()));
+            let path = dir.join(format!("灵-备份-{}.json", util::local_file_stamp()));
             let json = serde_json::to_string_pretty(&bundle)
                 .map_err(|e| format!("序列化失败：{e}"))?;
             std::fs::write(&path, json).map_err(|e| format!("写入导出文件失败：{e}"))?;

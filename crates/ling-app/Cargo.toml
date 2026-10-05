@@ -22,6 +22,10 @@ ling-render = { path = "../ling-render" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 # 消费 ling-core::ai 的 Stream 接口（ling-core 已依赖，无新增下载）
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+# 系统剪贴板（设置页「复制路径」；与 slint 剪贴板后端同版本，已在锁文件中）
+arboard = { version = "3.6", default-features = false }
+# 本地可读时间（导出文件名 灵-备份-YYYYMMDD-HHmm.json；已在锁文件中）
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [build-dependencies]
 slint-build = "=1.18.1"
