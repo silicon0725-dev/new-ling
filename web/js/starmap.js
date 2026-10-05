@@ -5,6 +5,9 @@ class Starmap {
   constructor(canvas, onPick) {
     this.cv = canvas; this.ctx = canvas.getContext('2d');
     this.onPick = onPick;
+    this.editMode = false;          /* 编辑模式: 拖节点/右键菜单/长按菜单 */
+    this.onEditAdd = null;
+    this.onEditMenu = null;         /* ({x,y(client), node, world}) 右键/长按菜单 */
     this.nodes = []; this.edges = [];
     this.view = { x: 0, y: 0, k: 1 };
     this.particles = [];
@@ -38,20 +41,88 @@ class Starmap {
       const k = Math.min(3, Math.max(0.4, this.view.k * (e.deltaY < 0 ? 1.12 : 0.89)));
       this.view.k = k;                       /* 以指针为锚的缩放（简化：中心锚） */
     }, { passive: false });
-    let drag = null;
+    let drag = null, nodeDrag = null, lp = null, lpStart = null;
+    const ptrs = new Map();                                 /* 多指追踪: 双指捏合缩放/平移 */
+    let pinch = null;
     cv.addEventListener('pointerdown', (e) => {
+      if (e.button === 2) return;                                /* 右键交 contextmenu 事件 */
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 2) {                                     /* 第二指落下: 进入捏合, 清除单指状态 */
+        if (lp) { clearTimeout(lp); lp = null; lpStart = null; }
+        drag = null; nodeDrag = null;
+        pinch = null;                                            /* 首次 move 建立基线 */
+        return;
+      }
+      if (ptrs.size > 2) return;
       const p = this._toWorld(e);
       const hit = this._pick(p);
-      if (hit) { this.selected = hit.id; this.onPick?.(hit); }
-      else { drag = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y }; this.selected = null; this.onPick?.(null); }
+      if (hit) {
+        this.selected = hit.id;
+        if (!this.editMode) this.onPick?.(hit);                  /* 编辑模式: 左键节点=拖动, 编辑走右键菜单 */
+        if (this.editMode) nodeDrag = { n: hit, ox: hit.x - p.x, oy: hit.y - p.y, moved: false };
+      } else {
+        drag = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y };   /* 左键/单指空白=平移(两模式同) */
+        if (!this.editMode) { this.selected = null; this.onPick?.(null); }
+      }
+      /* 触屏/触控笔长按 = 右键菜单(移动 <6px 且未抬起) */
+      if (this.editMode && (e.pointerType === 'touch' || e.pointerType === 'pen')) {
+        const sx = e.clientX, sy = e.clientY;
+        lpStart = { sx, sy };
+        lp = setTimeout(() => {
+          lp = null; lpStart = null; drag = null; nodeDrag = null;
+          const wp = this._toWorld({ clientX: sx, clientY: sy });
+          this.onEditMenu?.({ x: sx, y: sy, node: this._pick(wp), world: wp });
+        }, 480);
+      }
       cv.setPointerCapture(e.pointerId);
     });
     cv.addEventListener('pointermove', (e) => {
+      if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size >= 2) {                                      /* 双指: 捏合缩放 + 中点平移 */
+        const [a, b] = [...ptrs.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (!pinch) { pinch = { dist, mid, k: this.view.k }; return; }
+        this.view.k = Math.min(3, Math.max(0.4, pinch.k * dist / Math.max(pinch.dist, 1)));
+        this.view.x += mid.x - pinch.mid.x;
+        this.view.y += mid.y - pinch.mid.y;
+        pinch.mid = mid;
+        return;
+      }
+      if (lp && lpStart && Math.hypot(e.clientX - lpStart.sx, e.clientY - lpStart.sy) > 6) {
+        clearTimeout(lp); lp = null; lpStart = null;              /* 移动即取消长按 */
+      }
+      if (nodeDrag) {
+        const p = this._toWorld(e);
+        nodeDrag.n.x = p.x + nodeDrag.ox; nodeDrag.n.y = p.y + nodeDrag.oy;
+        nodeDrag.n.pinned = true; nodeDrag.moved = true;
+        return;
+      }
       if (!drag) return;
       this.view.x = drag.vx + (e.clientX - drag.x);
       this.view.y = drag.vy + (e.clientY - drag.y);
     });
-    cv.addEventListener('pointerup', () => { drag = null; });
+    const endPtr = (e) => {
+      ptrs.delete(e.pointerId);
+      if (ptrs.size < 2) pinch = null;
+      if (lp) { clearTimeout(lp); lp = null; }
+      lpStart = null; drag = null; nodeDrag = null;
+    };
+    cv.addEventListener('pointerup', endPtr);
+    cv.addEventListener('pointercancel', endPtr);
+    /* 右键菜单(编辑模式) */
+    cv.addEventListener('contextmenu', (e) => {
+      if (!this.editMode) return;
+      e.preventDefault();
+      const p = this._toWorld(e);
+      this.onEditMenu?.({ x: e.clientX, y: e.clientY, node: this._pick(p), world: p });
+    });
+  }
+
+  setEditMode(m) { this.editMode = !!m; }
+  relax() {
+    const rnd = (n) => crypto.getRandomValues(new Int8Array(1))[0] / 128 * n;   /* 随机踢一脚重排 */
+    for (const n of this.nodes) { n.pinned = false; n.vx = rnd(8); n.vy = rnd(8); }
   }
 
   _resize() {
@@ -115,6 +186,7 @@ class Starmap {
       b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
     }
     for (const n of N) {
+      if (n.pinned) continue;                                        /* 编辑模式钉住的节点不参与物理 */
       n.vx += (W / 2 - n.x) * 0.0015; n.vy += (H / 2 - n.y) * 0.0015;   // 向心
       n.vx *= 0.85; n.vy *= 0.85;
       n.x += n.vx; n.y += n.vy;

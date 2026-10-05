@@ -98,6 +98,75 @@
       <div class="world-detail" id="world-detail"></div>
       <div class="world-intro" id="world-intro"></div>
       <button class="iconbtn world-back" id="world-back" data-icon="arrow-left" aria-label="返回世界列表" title="返回世界列表"></button>
+      <div class="edit-toolbar" id="edit-toolbar">
+        <button class="seg-btn active" data-mode="view">查看</button>
+        <button class="seg-btn" data-mode="edit">编辑</button>
+      </div>
+      <div class="ctx-menu" id="ctx-menu"></div>
+      <div class="drop-veil" id="drop-veil">松开以导入设定文件</div>
+    </div>
+    <div class="page-main" id="we-page" style="display:none">
+      <div id="we-top" style="display:flex; align-items:center; gap:var(--sp-3)">
+        <button class="iconbtn" id="we-back" data-icon="arrow-left" aria-label="返回星图" title="返回星图"></button>
+        <h2 style="font-size:var(--fs-lg)">编辑节点</h2>
+        <span style="flex:1"></span>
+        <button class="btn sm" id="we-info-btn" data-icon="sliders-horizontal"><span class="bl">基础信息</span></button>
+        <button class="btn sm" id="we-ai-btn" data-icon="wand-sparkles"><span class="bl">AI 助手</span></button>
+      </div>
+      <div style="max-width:640px; width:100%; margin:0 auto; padding: var(--sp-4) var(--sp-5) var(--sp-6)">
+        <div class="we-pane" data-pane="node">
+          <div class="field"><label>名称</label><input class="input" id="we-name"></div>
+          <div class="field"><label>描述（Markdown）</label>
+            <div class="we-rtbar">
+              <button type="button" data-pre="**" data-post="**" data-ph="粗体" title="粗体"><b>B</b></button>
+              <button type="button" data-pre="*" data-post="*" data-ph="斜体" title="斜体"><i>I</i></button>
+              <button type="button" data-pre="## " data-post="" data-ph="标题" title="标题">H</button>
+              <button type="button" data-pre="- " data-post="" data-ph="列表项" title="列表">•≡</button>
+              <button type="button" data-pre="> " data-post="" data-ph="引用" title="引用">❝</button>
+              <button type="button" data-pre="`" data-post="`" data-ph="代码" title="行内代码">&lt;&gt;</button>
+              <button type="button" data-pre="[" data-post="](url)" data-ph="链接文字" title="链接">🔗</button>
+              <span style="flex:1"></span>
+              <button type="button" class="btn sm" id="we-md-edit" data-icon="pencil"><span class="bl">编辑</span></button>
+              <button type="button" class="btn sm" id="we-md-prev" data-icon="eye"><span class="bl">预览</span></button>
+            </div>
+            <div class="we-md-wrap">
+              <textarea class="we-md" id="we-desc" placeholder="支持 Markdown：**粗体** *斜体* # 标题 - 列表 > 引用 \`代码\` [链接](url)"></textarea>
+              <div class="we-preview md-body" id="we-preview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="we-panel" id="we-info">
+      <div class="we-panel-hd">基础信息<button class="btn sm" data-we-close>收起</button></div>
+      <div class="row" style="gap:var(--sp-2)">
+        <div class="field" style="flex:1"><label>类型</label>
+          <select class="input" id="we-kind"><option>大陆</option><option>组织</option><option selected>概念</option><option>事件</option><option>人物</option></select></div>
+        <div class="field" style="width:110px"><label>权重 <span id="we-wv">2</span></label><input type="range" id="we-weight" min="1" max="5" step="1" value="2"></div>
+      </div>
+      <div class="field"><label>连线</label>
+        <div class="we-edges" id="we-edges"></div>
+        <div class="row" style="gap:var(--sp-2); margin-top:6px">
+          <select class="input" id="we-linkto" style="flex:1"></select>
+          <button class="btn sm" id="we-link-add">连接</button>
+        </div>
+      </div>
+      <button class="btn sm danger" id="we-delete" style="margin-top:var(--sp-3)">删除节点</button>
+    </div>
+    <div class="we-panel" id="we-ai">
+      <div class="we-panel-hd">AI 助手<button class="btn sm" data-we-close>收起</button></div>
+      <button class="btn" id="we-polish" data-icon="wand-sparkles" style="width:100%">润色当前节点描述</button>
+      <button class="btn" id="we-suggest" data-icon="sparkles" style="width:100%; margin-top:8px">AI 生成关联节点（自动连线）</button>
+      <div class="field" style="margin-top:12px"><label>自由指令（如「增加一个敌对组织并与灰烬议会决裂」）</label>
+        <textarea class="textarea" id="we-prompt" style="min-height:84px"></textarea></div>
+      <button class="btn primary" id="we-run" style="width:100%">执行</button>
+      <div class="we-drop" id="we-drop" style="margin-top:12px">拖入 md · txt · docx · zip<br><small>或</small><br>
+        <button class="btn sm" id="we-file-btn">选择文件</button>
+        <input type="file" id="we-files" multiple accept=".md,.markdown,.txt,.docx,.zip" hidden>
+      </div>
+      <div class="file-chips" id="we-file-chips" style="margin-top:8px"></div>
+      <button class="btn primary" id="we-import" style="width:100%; margin-top:10px" disabled>分析并导入节点</button>
+      <div class="we-hint">导入后 AI 自动创建节点并判断与现有节点的连线。</div>
     </div>
   </section>
 
