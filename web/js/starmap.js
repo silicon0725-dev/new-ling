@@ -56,7 +56,13 @@ class Starmap {
 
   _resize() {
     const r = this.cv.parentElement.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;                          /* 隐藏/塌缩: 忽略, 勿清画布 */
+    if (Math.abs(r.width - this.W) < 1 && Math.abs(r.height - this.H) < 1) return;   /* 亚像素抖动: 不重建背板 */
     const dpr = Math.min(2, devicePixelRatio || 1);
+    if (this.particles.length) {                                      /* 星尘等比重铺: 覆盖新区无重置感 */
+      const kx = r.width / (this.W || r.width), ky = r.height / (this.H || r.height);
+      for (const p of this.particles) { p.x *= kx; p.y *= ky; }
+    }
     this.cv.width = r.width * dpr; this.cv.height = r.height * dpr;
     this.W = r.width; this.H = r.height;
     if (!this.particles.length) {
@@ -134,30 +140,28 @@ class Starmap {
     x.scale(this.view.k, this.view.k);
     x.translate(-this.W / 2, -this.H / 2);
 
-    /* 连线 */
+    /* 连线: 与选中节点相连的边随其亮度渐亮 */
     for (const [a, b] of this.edges) {
+      const glow = 1 + Math.max(a.sel ?? 0, b.sel ?? 0) * 1.4;
       const g = x.createLinearGradient(a.x, a.y, b.x, b.y);
-      g.addColorStop(0, 'rgba(255,255,255,0.30)');
-      g.addColorStop(1, 'rgba(230,230,234,0.14)');
+      g.addColorStop(0, `rgba(255,255,255,${Math.min(0.85, 0.30 * glow).toFixed(3)})`);
+      g.addColorStop(1, `rgba(230,230,234,${Math.min(0.60, 0.14 * glow).toFixed(3)})`);
       x.strokeStyle = g; x.lineWidth = 0.8;
       x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
     }
 
-    /* 节点 */
+    /* 节点: 选中不画框 —— 亮度 sel 每帧向目标缓动, 星体缓慢亮起/熄灭 */
     for (const n of this.nodes) {
-      const r = 3 + n.weight * 1.4;
+      const sel = n.sel = (n.sel ?? 0) + ((this.selected === n.id ? 1 : 0) - (n.sel ?? 0)) * 0.055;
+      const r = (3 + n.weight * 1.4) * (1 + 0.35 * sel);
       const dormant = n.state === 'dormant';
-      const alpha = dormant ? 0.32 : 1;
-      const sel = this.selected === n.id;
       const col = n.kind === 'trait' ? '255,255,255' : '214,214,218';
-      x.shadowColor = `rgba(${col},${dormant ? 0.25 : 0.85})`;
-      x.shadowBlur = (sel ? 26 : 12) * (this.view.k > 0.7 ? 1 : 0.7);
-      x.fillStyle = `rgba(${col},${alpha})`;
+      x.shadowColor = `rgba(${col},${Math.min(1, (dormant ? 0.25 : 0.85) * (1 + sel)).toFixed(3)})`;
+      x.shadowBlur = (12 + 26 * sel) * (this.view.k > 0.7 ? 1 : 0.7);
+      x.fillStyle = `rgba(${col},${Math.min(1, (dormant ? 0.32 : 1) + 0.2 * sel).toFixed(3)})`;
       x.beginPath(); x.arc(n.x, n.y, r, 0, 7); x.fill();
       x.shadowBlur = 0;
-      if (sel) { x.strokeStyle = 'rgba(255,255,255,0.9)'; x.lineWidth = 1.4;
-        x.beginPath(); x.arc(n.x, n.y, r + 5, 0, 7); x.stroke(); }
-      x.fillStyle = `rgba(244,244,245,${dormant ? 0.4 : 0.75})`;
+      x.fillStyle = `rgba(244,244,245,${Math.min(1, (dormant ? 0.4 : 0.75) + 0.25 * sel).toFixed(3)})`;
       x.font = '500 10.5px Inter, "PingFang SC", sans-serif';
       x.textAlign = 'center';
       x.fillText(n.label, n.x, n.y - r - 6);

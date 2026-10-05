@@ -43,7 +43,7 @@ const requireApi = () => {
 const llmOpts = () => ({ ...Store.settings });
 
 /* ── 路由 ── */
-const routes = ['chat', 'characters', 'territory', 'starmap', 'settings'];   /* 顺序即过渡方向轴 */
+const routes = ['chat', 'characters', 'territory', 'starmap', 'worlds', 'settings'];   /* 顺序即过渡方向轴 */
 let booted = false;
 let pageSliding = false;     /* 页面滑动中抑制列表级联入场, 避免双重动画 */
 
@@ -80,7 +80,7 @@ function route() {
   if (sliding) ghost(prev);                             /* 先冻结旧页(还在流内), 再切 active */
 
   $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
-  ({ chat: renderChat, characters: renderChars, territory: renderTerritory, starmap: renderStarmap, settings: renderSettings })[page]();
+  ({ chat: renderChat, characters: renderChars, territory: renderTerritory, starmap: renderStarmap, worlds: renderWorlds, settings: renderSettings })[page]();
   EdgeGlow.collect();                 /* 页面重渲染后重新收集发光目标 */
 
   if (sliding) {
@@ -359,9 +359,19 @@ function renderStarmap() {
   state.starmap.setData(nodes, edges);
   showNodeDetail(null);
 }
+let ndSeq = 0;                                 /* 节点面板开/关时序令牌 */
 function pickNodeDetail(node) {
   const el = $('#node-detail');
-  if (!node) { el.classList.remove('show'); return; }
+  if (!node) {
+    if (!el.classList.contains('show')) return;
+    const my = ++ndSeq;                       /* 快速重开保护: 迟到的隐藏回调不再生效 */
+    Motion.motion(el, { y: 8, opacity: 0, speed: 'fast' }).finished.then(() => {
+      if (my !== ndSeq) return;
+      el.classList.remove('show');
+    });
+    return;
+  }
+  ++ndSeq;                                    /* 使在飞的隐藏回调失效 */
   const c = Store.char(state.charId);
   const arc = node.kind === 'memory' ? c.arcs.find(a => 'a:' + a.id === node.id) : null;
   const trait = node.kind === 'trait' ? c.traits.find(t => 't:' + t.name === node.id) : null;
@@ -377,6 +387,70 @@ function pickNodeDetail(node) {
   Motion.motion(el, { y: 0, opacity: 1, speed: 'fast' }, { from: { y: 8, opacity: 0 } });
 }
 const showNodeDetail = pickNodeDetail;
+
+/* ═══ 世界页：列表 ⇄ 世界星图详情 ═══ */
+let wdSeq = 0;                                    /* 世界实体面板开合时序令牌 */
+function pickWorldDetail(node) {
+  const el = $('#world-detail');
+  if (!node) {
+    if (!el.classList.contains('show')) return;
+    const my = ++wdSeq;
+    Motion.motion(el, { y: 8, opacity: 0, speed: 'fast' }).finished.then(() => {
+      if (my !== wdSeq) return;
+      el.classList.remove('show');
+    });
+    return;
+  }
+  ++wdSeq;
+  el.innerHTML = `
+    <div class="kind">${esc(node.kind === 'trait' ? '大陆' : node.kind)}节点</div>
+    <div style="font-size:var(--fs-lg); margin:6px 0">${esc(node.label)}</div>
+    <div style="font-size:var(--fs-sm); color:var(--text-2); line-height:1.7">${esc(node.desc || '（暂无描述）')}</div>`;
+  el.classList.add('show');
+  Motion.motion(el, { y: 0, opacity: 1, speed: 'fast' }, { from: { y: 8, opacity: 0 } });
+}
+function renderWorlds() {
+  const listWrap = $('#world-list-wrap'), view = $('#world-view');
+  if (!state.worldView || !Store.world(state.worldView)) {
+    state.worldView = null;
+    listWrap.style.display = ''; view.style.display = 'none';
+    const ws = Store.worlds;
+    $('#world-grid').innerHTML = ws.map(w => `
+      <div class="card world-card clickable" data-openw="${w.id}">
+        <div class="avatar">${esc(w.emoji)}</div>
+        <div class="name">${esc(w.name)}</div>
+        <div class="persona">${esc((w.intro || '').slice(0, 64))}${(w.intro || '').length > 64 ? '…' : ''}</div>
+        <div class="row" style="margin-top:auto; padding-top:8px">
+          <span style="font-size:var(--fs-xs); color:var(--text-3)">${w.nodes.length} 个实体 · ${w.edges.length} 条关系</span>
+          <button class="btn sm danger" style="margin-left:auto" data-delw="${w.id}" data-icon="trash" title="删除世界"><span class="bl">删除</span></button>
+        </div>
+      </div>`).join('');
+    injectIcons($('#world-grid'));
+    document.querySelectorAll('#world-grid .world-card:not(.world-new)').forEach(rise);
+    return;
+  }
+  /* 详情：世界星图 */
+  listWrap.style.display = 'none'; view.style.display = '';
+  const w = Store.world(state.worldView);
+  if (!state.worldMap) state.worldMap = new Starmap($('#world-map'), pickWorldDetail);
+  state.worldMap.setData(w.nodes, w.edges);
+  const intro = $('#world-intro');
+  intro.innerHTML = `<div class="kind">世界</div><div style="font-size:var(--fs-lg); margin:4px 0">${esc(w.emoji)} ${esc(w.name)}</div>
+    <div style="font-size:var(--fs-sm); color:var(--text-2); line-height:1.7">${esc(w.intro || '（暂无简介）')}</div>`;
+  pickWorldDetail(null);
+}
+
+/* 设置解析结果 → 世界实体 */
+function applyParsedWorld(parsed, name, emoji, intro) {
+  const nodes = (parsed.nodes ?? []).map((n, i) => ({
+    id: 'p' + i, kind: n.kind || '概念', label: String(n.label || '未命名'),
+    weight: Math.min(5, Math.max(1, +n.weight || 2)), state: 'active', desc: String(n.desc || ''),
+  }));
+  const byLabel = Object.fromEntries(nodes.map(n => [n.label, n.id]));
+  const edges = (parsed.edges ?? [])
+    .map(([a, b]) => [byLabel[a], byLabel[b]]).filter(([a, b]) => a && b);
+  return { name, emoji, intro, nodes, edges };
+}
 
 /* ═══ 设置页 ═══ */
 function renderSettings() {
@@ -491,6 +565,61 @@ function bind() {
   $('#char-save').addEventListener('click', saveChar);
   $('#char-cancel').addEventListener('click', () => $('#char-modal').classList.remove('open'));
 
+  /* 世界 */
+  $('#add-world').addEventListener('click', () => { $('#world-modal').classList.add('open'); Sfx.play('open'); });
+  $('#world-grid').addEventListener('click', (e) => {
+    const dw = e.target.closest('[data-delw]');
+    if (dw) {
+      if (confirm('删除该世界？')) { Store.removeWorld(dw.dataset.delw); Sfx.play('delete'); renderWorlds(); toast('世界已删除'); }
+      return;
+    }
+    const ow = e.target.closest('[data-openw]');
+    if (ow) { state.worldView = ow.dataset.openw; renderWorlds(); Sfx.play('select'); }
+  });
+  $('#world-back').addEventListener('click', () => { state.worldView = null; pickWorldDetail(null); renderWorlds(); });
+  $('#world-cancel').addEventListener('click', () => $('#world-modal').classList.remove('open'));
+  $('#world-save').addEventListener('click', () => {
+    const name = $('#w-name').value.trim();
+    if (!name) { toast('世界需要一个名字', true); return; }
+    const parsed = window.__parsedWorld;
+    const w = Store.addWorld({
+      name, emoji: $('#w-emoji').value.trim() || '🌐', intro: $('#w-intro').value.trim(),
+      nodes: parsed?.nodes ?? [{ id: 'p0', kind: '概念', label: name, weight: 3, state: 'active', desc: '世界的中心概念' }],
+      edges: parsed?.edges ?? [],
+    });
+    window.__parsedWorld = null;
+    $('#world-modal').classList.remove('open');
+    $('#w-name').value = ''; $('#w-emoji').value = '🌐'; $('#w-intro').value = ''; $('#w-lore').value = '';
+    renderWorlds(); toast('世界已铸造');
+    state.worldView = w.id; renderWorlds();
+  });
+  $('#w-parse-btn').addEventListener('click', async () => {
+    const lore = $('#w-lore').value.trim();
+    if (!lore) { toast('先丢入世界素材', true); return; }
+    if (!requireApi()) return;
+    const btn = $('#w-parse-btn');
+    btn.disabled = true; btn.textContent = '铸造中…';
+    try {
+      LLM.guard(Store.settings.baseUrl);
+      const out = await LLM.complete({
+        ...llmOpts(),
+        messages: [{ role: 'user', content:
+          '从下面的世界观设定中提取世界星图实体。只输出 JSON，不要多余文字。格式：\n' +
+          '{"name":"世界名","intro":"50字内简介","nodes":[{"label":"实体名","kind":"大陆|组织|概念|事件|人物","weight":1-5,"desc":"20字内描述"}],"edges":[["实体A","实体B"]]}\n' +
+          '提取 12~22 个最重要的实体（大陆/核心组织/关键概念/重大事件/主角），关系边 15~30 条。\n\n' + lore.slice(0, 6000) }],
+      });
+      const parsed = LLM.extractJson(out);
+      const built = applyParsedWorld(parsed,
+        $('#w-name').value.trim() || parsed.name || '新世界',
+        $('#w-emoji').value.trim() || '🌐',
+        $('#w-intro').value.trim() || parsed.intro || '');
+      $('#w-name').value = built.name; $('#w-emoji').value = built.emoji; $('#w-intro').value = built.intro;
+      window.__parsedWorld = built;                 /* 保存按钮随取 */
+      toast(`铸造出 ${built.nodes.length} 实体 · ${built.edges.length} 关系`);
+    } catch (e) { toast('铸造失败：' + e.message, true); }
+    finally { btn.disabled = false; btn.textContent = '铸造'; }
+  });
+
   /* 领地 */
   $('#residents').addEventListener('click', (e) => {
     const r = e.target.closest('[data-focus]');
@@ -575,7 +704,7 @@ function bindDrawer() {
 const EdgeGlow = (() => {
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
   const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom, '
-    + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item, .nav';
+    + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item, .nav, .world-card';
   const REACH = 90;                 // 感应半径(px), 距边缘 90px 内开始渐亮
   let targets = [], raf = 0, mx = -1e4, my = -1e4;
 
@@ -607,35 +736,111 @@ const EdgeGlow = (() => {
   return { collect };
 })();
 
-/* ── 角色卡列数切换: 盒宽从前值动画(Motion), 列数变化不再硬切 ──
-   目标宽取自 gridTemplateColumns 轨道真值(动画中量 rect 会读到中间值);
-   动画中再来新尺寸 = Motion 平滑接管改道(从当前动画值到新轨宽), 快速连续切换不失效;
-   结束清内联宽还给网格 */
+/* ── 角色卡网格: 布局 1:1 跟手 + 位置偏移普通缓动 ──
+   布局永远即时跟手(无动画/无内联宽); 列数变化瞬间只记
+   "视觉连续性偏移"(旧视觉 - 新布局, 含在飞偏移当前值), 之后
+   320ms 固定时长 easeOutCubic 缓到位 —— 只平移不缩放
+   (尺寸跟布局即时变, 拉伸形变=弹跳感来源, 已去除) */
 (() => {
   const grid = $('#char-grid');
   if (!grid) return;
-  let prevW = null;
-  const flying = el => el.getAnimations().some(a => {
-    try { return a.effect.getKeyframes().some(kf => 'width' in kf); } catch { return false; }
-  });
-  const apply = () => {
-    const cards = [...grid.querySelectorAll('.char-card')];
-    if (!cards.length || !grid.offsetWidth) { if (!grid.offsetWidth) prevW = null; return; }
-    const tracks = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).map(parseFloat).filter(n => n > 0);
-    if (!tracks.length) return;
-    cards.forEach((el, i) => {
-      const w1 = Math.round(tracks[i % tracks.length]);
-      if (flying(el)) {
-        Motion.motion(el, { width: w1, speed: 'med' }).finished.then(() => { el.style.width = ''; });
-      } else {
-        const w0 = prevW ? prevW[i] : Math.round(el.getBoundingClientRect().width);
-        if (Math.abs(w1 - w0) >= 2)
-          Motion.motion(el, { width: w1, speed: 'med' }, { from: { width: w0 } }).finished.then(() => { el.style.width = ''; });
-      }
-    });
-    prevW = cards.map((_, i) => Math.round(tracks[i % tracks.length]));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const cards = () => [...grid.querySelectorAll('.char-card')];
+  const cols = () => {
+    try { return getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).map(parseFloat).filter(n => n > 0).length; }
+    catch { return 0; }
   };
-  new ResizeObserver(() => requestAnimationFrame(apply)).observe(grid);
+  let nCols = 0, layout = [], raf = 0, t0 = 0;
+  const off = new Map();     /* el → 起始偏移 {dx,dy} 只平移 */
+  const DUR = 320;           /* 固定时长 · 普通缓出(非弹簧) */
+  const easeOut = p => 1 - Math.pow(1 - p, 3);
+  const curOff = o => {      /* 在飞偏移的当前值(改道连续性用) */
+    if (!o) return { dx: 0, dy: 0 };
+    const r = 1 - easeOut(Math.min(1, (performance.now() - t0) / DUR));
+    return { dx: o.dx * r, dy: o.dy * r };
+  };
+  function frame(t) {
+    raf = 0;
+    const p = Math.min(1, (t - t0) / DUR), r = 1 - easeOut(p);
+    for (const [el, o] of off) {
+      if (!el.isConnected) { off.delete(el); continue; }
+      if (p >= 1) { el.style.transform = ''; off.delete(el); continue; }
+      el.style.transform = `translate(${(o.dx * r).toFixed(2)}px, ${(o.dy * r).toFixed(2)}px)`;
+    }
+    if (off.size) raf = requestAnimationFrame(frame);
+  }
+  const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; for (const [el] of off) el.style.transform = ''; off.clear(); };
+  function onResize() {
+    const els = cards();
+    if (!els.length || !grid.offsetWidth) { nCols = 0; layout = []; stop(); return; }
+    const n = cols();
+    if (!n) return;
+    if (nCols && n !== nCols && layout.length === els.length && !reduced.matches) {
+      els.forEach((el, i) => {
+        const old = layout[i];
+        if (!old || el.getAnimations().length) return;
+        const c = curOff(off.get(el));            /* 在飞偏移当前值: 改道零跳变 */
+        const dx = (old.l + c.dx) - el.offsetLeft, dy = (old.t + c.dy) - el.offsetTop;
+        if (Math.abs(dx) < .5 && Math.abs(dy) < .5) { off.delete(el); el.style.transform = ''; return; }
+        off.set(el, { dx, dy });
+      });
+      if (off.size) { t0 = performance.now(); if (!raf) raf = requestAnimationFrame(frame); }
+    }
+    nCols = n;
+    layout = els.map(el => ({ l: el.offsetLeft, t: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }));
+  }
+  new ResizeObserver(() => setTimeout(onResize, 0)).observe(grid);   /* 勿用 rAF: 面板隐藏时 rAF 挂起 */
+})();
+
+/* ── 卡片按下 3D 倾斜: 中心锚点跷跷板 —— 被按处下沉, 对角上浮 ──
+   事件委托(重渲染安全); transform-origin 保持默认卡片正中心;
+   按下捕获当前内联 transform 为基线(与网格列变偏移动画正交, 平移不受 origin 影响);
+   reduced-motion 直接跳过 */
+(() => {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const MAX = 7;                     /* 最大倾角 deg */
+  let cur = null;
+  const reset = (a) => { a.el.style.transform = a.base; };
+  const loop = () => {
+    if (!cur) return;
+    const { el, base } = cur;
+    cur.rx += (cur.trx - cur.rx) * cur.k;
+    cur.ry += (cur.try_ - cur.ry) * cur.k;
+    if (!cur.hold && Math.abs(cur.rx) < 0.05 && Math.abs(cur.ry) < 0.05) {
+      reset(cur);                    /* 完全回正: 还原基线 */
+      cur = null;
+      return;
+    }
+    el.style.transform = `${base ? base + ' ' : ''}perspective(760px) rotateX(${cur.rx.toFixed(2)}deg) rotateY(${cur.ry.toFixed(2)}deg)`;
+    requestAnimationFrame(loop);
+  };
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest?.('.char-card, .world-card, .node-detail, .world-detail');
+    if (!el) return;
+    if (cur && cur.el !== el) reset(cur);                             /* 换卡: 上一张立即复位 */
+    const r = el.getBoundingClientRect();                             /* 倾斜前的未形变矩形(滑动映射的稳定基准) */
+    cur = { el, base: el.style.transform || '', r,
+      rx: 0, ry: 0, k: 0.25, hold: true,
+      trx: (0.5 - (e.clientY - r.top) / r.height) * 2 * MAX,
+      try_: ((e.clientX - r.left) / r.width - 0.5) * 2 * MAX,
+    };
+    requestAnimationFrame(loop);
+  });
+  /* 按住滑动: 目标角随指针实时更新(出界钳制到边缘), lerp 平滑追逐 */
+  document.addEventListener('pointermove', (e) => {
+    if (!cur || !cur.hold) return;
+    const { r } = cur;
+    const nx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const ny = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    cur.trx = (0.5 - ny) * 2 * MAX;
+    cur.try_ = (nx - 0.5) * 2 * MAX;
+  }, { passive: true });
+  const release = () => {
+    if (!cur) return;
+    cur.hold = false; cur.trx = 0; cur.try_ = 0; cur.k = 0.16;       /* 松手: 缓速回正 */
+  };
+  document.addEventListener('pointerup', release);
+  document.addEventListener('pointercancel', release);
 })();
 
 bind();

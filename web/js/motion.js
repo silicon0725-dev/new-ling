@@ -41,9 +41,10 @@ const Motion = (() => {
 
   /* 曲线预设（与 tokens.css 令牌同源）· 速度预设（--dur-* 同源） */
   const EASE = {
-    ease: [0.2, 0.7, 0.2, 1],       /* = var(--ease) */
+    ease: [0.2, 0.7, 0.2, 1],       /* = var(--ease) · 前冲快收, 微交互用 */
     out:  [0.16, 1, 0.3, 1],        /* 急出缓停 · 入场/展开 */
     in:   [0.7, 0, 0.84, 0],        /* 缓起急收 · 退场/收起 */
+    glide: [0.42, 0, 0.25, 1],      /* 缓起-长滑-稳收 · 大位移飞行(FLIP), 低Q弹感 */
   };
   const SPEED = { press: 120, fast: 160, med: 220, slow: 280 };
 
@@ -101,6 +102,8 @@ const Motion = (() => {
       x: +m.e.toFixed(3), y: +m.f.toFixed(3),
       angle: +(Math.atan2(m.b, m.a) * 180 / Math.PI).toFixed(3),
       size: +Math.hypot(m.a, m.b).toFixed(4),
+      sx: +Math.hypot(m.a, m.b).toFixed(4),          /* 非均匀缩放(FLIP 用); 旋转≠0 时为近似 */
+      sy: +Math.hypot(m.d, m.c).toFixed(4),
       width: parseFloat(cs.width), height: parseFloat(cs.height),
       radius: parseFloat(cs.borderTopLeftRadius) || 0,
       opacity: +cs.opacity,
@@ -121,7 +124,7 @@ const Motion = (() => {
     return v;
   }
 
-  const KEYS = ['x', 'y', 'angle', 'size', 'width', 'height', 'radius', 'opacity',
+  const KEYS = ['x', 'y', 'angle', 'size', 'sx', 'sy', 'width', 'height', 'radius', 'opacity',
                 'blur', 'brightness', 'saturate', 'frost', 'grain'];
   const active = new WeakMap();     /* el → Set<Animation> 接管注册表(含噪点层动画) */
 
@@ -132,8 +135,11 @@ const Motion = (() => {
     const curve = Array.isArray(easeDef) ? easeDef : (EASE[easeDef] ?? EASE.ease);
     const D = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.max(0, dur);
 
-    /* 1) 现值检测（含旧动画 fill 中的值 → 接管无跳变）；from 覆盖用于入场等场景 */
-    const from = { ...detect(el), ...(opts.from ?? {}) };
+    /* 1) 现值检测（含旧动画 fill 中的值 → 接管无跳变）；from 覆盖用于入场等场景。
+       from 显式给 size 时映射到 sx/sy(均匀缩放语义), 免被检测出的非均匀值顶掉 */
+    const ov = { ...(opts.from ?? {}) };
+    if (ov.size !== undefined && ov.sx === undefined) { ov.sx = ov.size; if (ov.sy === undefined) ov.sy = ov.size; }
+    const from = { ...detect(el), ...ov };
 
     /* 2) 取消旧同源动画（含上一次的噪点层动画；现值已捕获，取消到新动画同帧完成） */
     const old = active.get(el);
@@ -149,9 +155,10 @@ const Motion = (() => {
       to[k] = v === 'auto' ? (k === 'width' || k === 'height' ? naturalPx(el, k) : from[k]) : +v;
     }
 
-    const tf = o => `translate(${o.x}px, ${o.y}px) rotate(${o.angle}deg) scale(${o.size})`;
+    const tf = o => `translate(${o.x}px, ${o.y}px) rotate(${o.angle}deg) scale(${o.sx ?? o.size}, ${o.sy ?? o.sx ?? o.size})`;
     const kf0 = { transform: tf(from) };
-    const kf1 = { transform: tf({ x: to.x ?? from.x, y: to.y ?? from.y, angle: to.angle ?? from.angle, size: to.size ?? from.size }) };
+    const T0 = { x: to.x ?? from.x, y: to.y ?? from.y, angle: to.angle ?? from.angle, size: to.size ?? from.size, sx: to.sx ?? to.size ?? from.sx, sy: to.sy ?? to.sx ?? to.size ?? from.sy };
+    const kf1 = { transform: tf(T0) };
     for (const k of ['width', 'height', 'radius', 'opacity']) {
       if (k in to) { kf0[k] = k === 'opacity' ? from[k] : from[k] + 'px'; kf1[k] = k === 'opacity' ? to[k] : to[k] + 'px'; }
     }

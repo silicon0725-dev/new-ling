@@ -160,7 +160,11 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
 .btn.danger { color: var(--danger); border-color: rgba(216, 85, 90, 0.4); }
-.btn.sm { padding: 5px 12px; font-size: var(--fs-xs); }
+.btn.sm {
+  padding: 5px 12px; font-size: var(--fs-xs);
+  transition: transform var(--dur-press) var(--ease), border-color var(--dur-fast) var(--ease),
+              opacity var(--dur-fast) var(--ease), padding var(--dur-med) var(--ease), gap var(--dur-med) var(--ease);
+}
 
 .input, .textarea, .select {
   width: 100%; padding: 9px var(--sp-3); border-radius: var(--radius);
@@ -275,11 +279,16 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
 
 /* ── 角色页 ── */
 .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-4); padding: var(--sp-5); }
-.char-card { display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; }   /* 入场由 Motion 级联驱动; 容器查询=自动检测卡片宽度 */
-/* 卡片太窄时按钮只留图标(文字改由 title 提示), 杜绝竖排 */
+.char-card { display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; will-change: transform; }   /* 入场由 Motion 级联驱动; 容器查询=自动检测; 偏移动画纯平移(与 origin 无关), origin 保持默认中心=按下3D倾斜绕心下沉 */
+/* 卡片太窄时按钮只留图标(文字改由 title 提示), 杜绝竖排;
+   文字用 max-width+opacity 折叠动画(非 display 硬切), gap 同步归零让图标居中 */
+.char-card .btn.sm .bl {
+  display: inline-block; max-width: 3em; overflow: hidden; vertical-align: bottom;
+  transition: max-width var(--dur-med) var(--ease), opacity var(--dur-fast) var(--ease);
+}
 @container (max-width: 280px) {
-  .char-card .btn.sm .bl { display: none; }
-  .char-card .btn.sm { padding: 6px 9px; }
+  .char-card .btn.sm .bl { max-width: 0; opacity: 0; }
+  .char-card .btn.sm { padding: 6px 9px; gap: 0; }
 }
 .char-card .avatar { font-size: 30px; }
 .char-card .name { font-size: var(--fs-lg); font-weight: 600; }
@@ -303,17 +312,52 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
 
 /* ── 星图页 ── */
 .starmap-wrap { flex: 1; position: relative; background: var(--bg); }  /* 与顶栏同色: 消除交界灰条 */
-/* 星图视口全出血: 胶囊/悬浮钮直接浮于星空之上(与手机端 padding-top:0 同语义) */
-main:has(> .page.active[data-page='starmap']) { padding-top: 0; }
+/* 星图视口全出血: 顶到屏幕边缘 + 铺到侧栏毛玻璃之下(星图不被侧栏挤开; 聊天等内容页保持挤开) */
+/* 世界详情视图(画布态)同样全出血 */
+main:has(> .page.active[data-page='starmap']),
+main:has(> .page.active[data-page='worlds'] .world-view:not([style*="none"])) { padding-top: 0; margin-left: 0; }
 #starmap { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
 #starmap:active { cursor: grabbing; }
 .node-detail {
-  position: absolute; right: var(--sp-4); top: 68px; width: 260px;   /* 68 = 清开顶部悬浮钮带 */
-  background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
-  padding: var(--sp-4); display: none; box-shadow: var(--glow);
+  position: absolute; right: var(--sp-4); top: 68px; width: 260px;
+  background: rgba(10, 10, 10, .58);                      /* 与侧栏浮起抽屉同款低透明度毛玻璃 */
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  padding: var(--sp-4); display: none; box-shadow: var(--glow); will-change: transform;
 }
 .node-detail.show { display: block; }   /* 入场动效由 Motion.motion 驱动(js/motion.js) */
 .node-detail .kind { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* ── 世界页 ── */
+.world-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-4); padding: var(--sp-5); width: 100%; }
+.world-card { display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; will-change: transform; }
+.world-card .avatar { font-size: 30px; }
+.world-card .name { font-size: var(--fs-lg); font-weight: 600; }
+.world-card .persona { color: var(--text-2); font-size: var(--fs-sm); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.world-new { align-items: center; justify-content: center; min-height: 140px; border-style: dashed; }
+.world-new .glyph { font-size: 34px; color: var(--text-3); line-height: 1; }
+@container (max-width: 280px) { .world-card .btn.sm .bl { max-width: 0; opacity: 0; } .world-card .btn.sm { padding: 6px 9px; gap: 0; } }
+
+/* 世界详情: 复用星图页视觉(画布 + 玻璃面板 + 悬浮返回) */
+.world-view { flex: 1; position: relative; background: var(--bg); }
+#world-map { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+#world-map:active { cursor: grabbing; }
+.world-detail {
+  position: absolute; right: var(--sp-4); top: 68px; width: 260px;
+  background: rgba(10, 10, 10, .58);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  padding: var(--sp-4); display: none; box-shadow: var(--glow); will-change: transform;
+}
+.world-detail.show { display: block; }
+.world-intro {
+  position: absolute; left: var(--sp-4); bottom: var(--sp-4); width: min(340px, calc(100% - 32px));
+  background: rgba(10, 10, 10, .58);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  padding: var(--sp-4); box-shadow: var(--glow);
+}
+.world-back { position: absolute; left: var(--sp-4); top: 68px; z-index: 5; }
 
 /* ── 设置页 ── */
 .settings { padding: var(--sp-5); max-width: 640px; margin: 0 auto; width: 100%; overflow-y: auto; }
@@ -374,7 +418,9 @@ main:has(> .page.active[data-page='starmap']) { padding-top: 0; }
 /* ── 边缘近邻发光（仅精确指针设备, EdgeGlow 驱动 CSS 变量） ──
    光标靠近组件边缘时, 最近点处的边缘环带被照亮(参考 Windows 图标近邻光带)。
    ::after 只保留 1.5px 边缘环(mask xor), 环色为径向光斑, 中心跟随光标最近点。 ── */
-.glow-edge:not(.sidenav-toggle):not(.sfx-float):not(.nav) { position: relative; }   /* fixed 悬浮钮/胶囊自带定位, 勿覆盖 */
+.glow-edge:where(:not(.sidenav-toggle, .sfx-float, .nav, .node-detail, .float-bottom)) { position: relative; }   /* 仅给静态流内组件升级定位; 自带定位(absolute/fixed)的勿覆盖 */
+.glow-edge.node-detail { position: absolute; }   /* 显式断言: 发光不改变定位语义 */
+.glow-edge.float-bottom { position: fixed; }
 
 .glow-edge::after {
   content: '';
