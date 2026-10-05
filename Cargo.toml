@@ -1,7 +1,10 @@
 # 「灵」Cargo 工作区根清单
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+    "crates/*",
+    "crates/ling-render",
+]
 
 [workspace.package]
 version = "0.1.0"
