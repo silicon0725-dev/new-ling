@@ -34,13 +34,13 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
 /* 侧栏开关: 唯一组件, 附着侧栏右上角; 收起后滑到屏幕左上; 图标 panel-left ⇄ x 形变 */
 .sidenav-toggle {
   position: fixed; z-index: 99;
-  top: 16px; left: 198px;                        /* 展开态: 侧栏头部右上 */
-  width: 34px; height: 34px; border-radius: var(--radius);
+  top: 13px; left: 192px;                        /* 展开态: 侧栏头部右上, 40 高与胶囊带同高 */
+  width: 40px; height: 40px; border-radius: var(--radius);
   background: var(--surface); border: 1px solid var(--border);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   transition: top .3s var(--ease), left .3s var(--ease), transform var(--dur-press) var(--ease);
 }
-body.side-closed .sidenav-toggle { top: 15px; left: 12px; }   /* 收起态: 屏幕左上, 与 nav 带垂直居中 */
+body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏幕左上, 40 高与胶囊同高同轴 */
 .sidenav-toggle:active { transform: scale(0.94); }
 .morph-ic {
   position: absolute; inset: 0; display: grid; place-items: center;
@@ -73,7 +73,8 @@ body.side-closed .sidenav-toggle { top: 15px; left: 12px; }   /* 收起态: 屏�
 .nav-item:hover { color: var(--text); }
 .nav-item.active { color: var(--text); background: var(--surface-strong); box-shadow: var(--glow); }
 .sfx-float {
-  position: fixed; top: 15px; right: 12px; z-index: 95;
+  position: fixed; top: 12px; right: 12px; z-index: 95;
+  width: 40px; height: 40px;
   background: var(--surface); border: 1px solid var(--border);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
@@ -346,8 +347,8 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
   .scrim { z-index: 96; }
   body.side-open .page-side { transform: none; }   /* 抽屉滑入 */
   /* 手机模式收起态: 开关钮回屏幕左上(修复桌面展开坐标 198px 泄漏) */
-  .sidenav-toggle { top: 15px; left: 12px; }
-  body.side-open .sidenav-toggle { top: 15px; left: calc(min(78vw, 280px) - 46px); }   /* 附着抽屉右上角, 与抽屉头部居中 */
+  .sidenav-toggle { top: 12px; left: 12px; }
+  body.side-open .sidenav-toggle { top: 12px; left: calc(min(78vw, 280px) - 56px); }   /* 附着抽屉右上角 */
 
   .chat-scroll { padding: var(--sp-4) var(--sp-3); }
   .bubble { max-width: 88%; }
