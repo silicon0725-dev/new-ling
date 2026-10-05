@@ -10,6 +10,8 @@ class Starmap {
     this.particles = [];
     this.running = false; this.t = 0;
     this.selected = null;
+    /* 底色与页面 --bg 同源：星图视口不再是纯黑, 与顶栏背景物理同色(消除交界灰条) */
+    this.bg = getComputedStyle(document.body).backgroundColor || '#060708';
     this._bind();
   }
 
@@ -117,7 +119,7 @@ class Starmap {
     const x = this.ctx, dpr = Math.min(2, devicePixelRatio || 1);
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
     x.clearRect(0, 0, this.W, this.H);
-    x.fillStyle = '#000'; x.fillRect(0, 0, this.W, this.H);
+    x.fillStyle = this.bg; x.fillRect(0, 0, this.W, this.H);
 
     /* 背景星尘 —— 屏幕空间绘制(缩放/平移变换之外): 视差背景层,
        不然 zoom-in 时一窄条源粒子被拉伸铺满边缘, 密集重叠成灰带 */
