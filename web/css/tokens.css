@@ -1,0 +1,58 @@
+/* ════════════════════════════════════════════════════════════
+   ling · 设计令牌（单一真源）
+   来源：《视觉设计规范》P2 报告 + ling.html 官网令牌映射
+   动效纪律（Emil Kowalski skills 对齐）：
+   - UI 动效 ≤300ms；按压反馈 100-160ms
+   - 只动 transform / opacity（GPU）
+   - 同屏活跃动画 ≤2 处；prefers-reduced-motion 降级
+   ════════════════════════════════════════════════════════════ */
+:root {
+  /* 色板 · 无色彩纪律：唯一彩色 = 危险红 */
+  --bg: #060708;              /* 近黑（星图视口用 #000 纯黑） */
+  --bg-2: #0a0a0a;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --text: #f4f4f5;
+  --text-2: #a6a6a8;
+  --text-3: #6b6b6e;
+
+  --accent: #ffffff;
+  --accent-2: #d6d6d8;        /* 银灰 · 成功/确认态用银白表达，不引入绿 */
+  --danger: #d8555a;          /* 全应用唯一彩色 */
+  --danger-bg: rgba(216, 85, 90, 0.12);
+
+  --glow: 0 0 14px rgba(255, 255, 255, 0.16);
+  --glow-strong: 0 0 22px rgba(255, 255, 255, 0.28);
+
+  /* 字号阶梯 */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14.5px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+  --fs-brand: 26px;
+
+  /* 间距刻度（4 的倍数） */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+  --radius: 8px;
+  --radius-lg: 14px;
+
+  /* 动效令牌 · 统一曲线（与官网同源） */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-press: 120ms;         /* 按压 */
+  --dur-fast: 160ms;          /* 悬停/小元素 */
+  --dur-med: 220ms;           /* 面板/切换 */
+  --dur-slow: 280ms;          /* 模态 */
+  --dur-dot: 420ms;           /* 流式点点 */
+  --stagger: 40ms;            /* 列表级联 */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-press: 0ms; --dur-fast: 0ms; --dur-med: 0ms; --dur-slow: 0ms; }
+  * { animation-duration: 0.01ms !important; }
+}

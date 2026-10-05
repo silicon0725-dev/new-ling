@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ling · 工作台（HTML 版）</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">ling</div>
+  <nav class="nav" aria-label="页面导航">
+    <div class="nav-item active" data-page="chat" data-icon="message-circle" tabindex="0">对话</div>
+    <div class="nav-item" data-page="characters" data-icon="users" tabindex="0">角色</div>
+    <div class="nav-item" data-page="territory" data-icon="house" tabindex="0">领地</div>
+    <div class="nav-item" data-page="starmap" data-icon="sparkles" tabindex="0">星图</div>
+    <div class="nav-item" data-page="settings" data-icon="settings" tabindex="0">设置</div>
+  </nav>
+  <div class="spacer"></div>
+  <button class="iconbtn" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
+  <div class="api-chip" id="api-chip">API 未配置</div>
+</header>
+
+<main>
+
+  <!-- ═══ 对话 ═══ -->
+  <section class="page active" data-page="chat">
+    <aside class="page-side">
+      <button class="btn" id="new-session" style="width:100%" data-icon="plus">新会话</button>
+      <div style="font-size:var(--fs-xs); color:var(--text-3); padding:4px 2px">会话</div>
+      <div class="session-list" id="sessions"></div>
+      <div style="font-size:var(--fs-xs); color:var(--text-3); padding:4px 2px; margin-top:8px">角色</div>
+      <div class="session-list" id="chat-chars"></div>
+      <div id="char-list-empty" class="empty" style="min-height:120px"></div>
+    </aside>
+    <div class="page-main" id="chat-body" style="display:none; position:relative">
+      <div class="chat-scroll" id="chat-scroll">
+        <div class="chat-inner" id="messages"></div>
+      </div>
+      <div class="float-bottom" id="float-bottom">↓ 回到底部</div>
+      <div class="composer">
+        <div class="composer-inner">
+          <textarea class="textarea" id="composer" placeholder="和角色说点什么……（Enter 发送，Shift+Enter 换行）"></textarea>
+          <button class="btn primary" id="send" data-icon="send-horizontal">发送</button>
+          <button class="btn" id="stop" data-icon="square" style="display:none">停止</button>
+        </div>
+      </div>
+    </div>
+    <div class="empty" id="chat-empty" style="display:none">
+      <span data-icon="moon" data-icon-size="36" style="color:var(--text-3)"></span>
+      <div>还没有角色。</div>
+      <a href="#/characters" style="color:var(--text-2)">去角色页铸造第一颗星 →</a>
+    </div>
+  </section>
+
+  <!-- ═══ 角色 ═══ -->
+  <section class="page" data-page="characters">
+    <div class="page-main">
+      <div style="display:flex; align-items:center; padding: var(--sp-4) var(--sp-5) 0">
+        <h2 style="font-size:var(--fs-lg)">角色</h2>
+        <span style="flex:1"></span>
+        <button class="btn primary" id="add-char" data-icon="wand-sparkles">铸造新角色</button>
+      </div>
+      <div class="char-grid" id="char-grid"></div>
+    </div>
+  </section>
+
+  <!-- ═══ 领地 ═══ -->
+  <section class="page" data-page="territory">
+    <div class="page-main"><div class="territory">
+      <h2 style="font-size:var(--fs-lg); margin-bottom:var(--sp-4)">领地 · 你的角色们在这里生活</h2>
+      <div class="banner" id="tl-banner" style="display:none">
+        <span>尚未配置模型 API：配置后即可为入住角色生成生活近况。</span>
+        <button class="btn sm" onclick="location.hash='#/settings'">前往设置</button>
+      </div>
+      <div class="resident-row" id="residents"></div>
+      <div class="row" style="margin-bottom:var(--sp-4)">
+        <button class="btn primary" id="generate-tl">生成近况</button>
+        <span style="font-size:var(--fs-xs); color:var(--text-3)">基于角色人设与最近对话，写一段它这段时间的生活</span>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </div></div>
+  </section>
+
+  <!-- ═══ 星图 ═══ -->
+  <section class="page" data-page="starmap">
+    <div class="starmap-wrap">
+      <canvas id="starmap"></canvas>
+      <div class="starmap-hud" id="starmap-hud">SOUL.GRAPH</div>
+      <div class="node-detail" id="node-detail"></div>
+    </div>
+  </section>
+
+  <!-- ═══ 设置 ═══ -->
+  <section class="page" data-page="settings">
+    <div class="page-main"><div class="settings">
+      <h2>模型 API</h2>
+      <div class="field"><label>BaseURL（OpenAI 兼容）</label>
+        <input class="input" id="s-base" placeholder="https://api.example.com/v1"></div>
+      <div class="field"><label>API Key（留空 = 匿名网关）</label>
+        <input class="input" id="s-key" type="password" placeholder="sk-…（可选）"></div>
+      <div class="field"><label>模型</label>
+        <input class="input" id="s-model" placeholder="例如 deepseek-chat / glm-4.7-flash"></div>
+      <div class="field"><label>对话后自动提炼记忆与特质</label>
+        <label style="display:flex; gap:8px; align-items:center; text-transform:none; letter-spacing:0; font-size:var(--fs-sm); color:var(--text-2)">
+          <input type="checkbox" id="s-distill" style="width:auto"> 开启（每次回复后追加一次提炼调用）</label></div>
+      <div class="row">
+        <button class="btn primary" id="s-save">保存</button>
+        <button class="btn" id="s-test">测试连通性</button>
+        <span id="conn-result"></span>
+      </div>
+
+      <h2>数据（本地 localStorage）</h2>
+      <div class="row" style="flex-wrap:wrap">
+        <button class="btn" id="s-export" data-icon="download">导出 JSON</button>
+        <button class="btn" id="s-import-btn" data-icon="upload" onclick="document.getElementById('s-import-file').click()">导入 JSON</button>
+        <input type="file" id="s-import-file" accept=".json,application/json" style="display:none">
+        <button class="btn danger" id="s-clear" data-icon="trash">清空全部数据</button>
+      </div>
+      <p style="font-size:var(--fs-xs); color:var(--text-3); margin-top:var(--sp-4)">
+        本页为 HTML 原型：设计定稿后照此移植 Rust + Slint 版（web/ 目录仅作设计迭代用）。
+      </p>
+    </div></div>
+  </section>
+
+</main>
+
+<!-- 角色铸造 / 编辑 -->
+<div class="overlay" id="char-modal">
+  <div class="modal">
+    <h3 id="modal-title">铸造角色</h3>
+    <div id="forge-area" style="margin-bottom:var(--sp-4)">
+      <div class="field"><label>素材（人设 / 小说片段 / 设定文本）</label>
+        <textarea class="textarea" id="forge-src" style="min-height:90px" placeholder="丢进来，AI 直接出角色卡"></textarea></div>
+      <button class="btn" id="forge-btn" data-icon="wand-sparkles">铸造</button>
+    </div>
+    <input type="hidden" id="f-id">
+    <div class="row" style="margin-bottom:var(--sp-3)">
+      <div style="width:70px"><input class="input" id="f-emoji" maxlength="4" style="text-align:center"></div>
+      <input class="input" id="f-name" placeholder="名字">
+    </div>
+    <div class="field"><label>人设</label><textarea class="textarea" id="f-persona"></textarea></div>
+    <div class="field"><label>说话风格</label><input class="input" id="f-style"></div>
+    <div class="field"><label>开场白</label><textarea class="textarea" id="f-greeting" style="min-height:56px"></textarea></div>
+    <div class="actions">
+      <button class="btn" id="char-cancel">取消</button>
+      <button class="btn primary" id="char-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="js/store.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/llm.js"></script>
+<script src="js/starmap.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/app.js"></script>
+<script>
+  /* 顶栏 API 状态章（守卫赋值，避免 observer 自触发死循环） */
+  (function chip(){
+    const el = document.getElementById('api-chip');
+    const update = () => {
+      const t = Store.apiReady() ? `API · ${Store.settings.model}` : 'API 未配置';
+      if (el.textContent !== t) el.textContent = t;
+    };
+    document.addEventListener('click', update);
+    document.addEventListener('storage', update);
+    update();
+  })();
+</script>
+</body>
+</html>

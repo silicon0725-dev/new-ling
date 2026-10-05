@@ -1,0 +1,164 @@
+/* ling · 成长星图（Canvas 力导向）
+   与 ling-render 同源视觉：近黑底、白/银灰节点发光、流光连线、背景星尘；
+   缩放/平移在显示层完成（同 Slint 版的显示层契约思路） */
+class Starmap {
+  constructor(canvas, onPick) {
+    this.cv = canvas; this.ctx = canvas.getContext('2d');
+    this.onPick = onPick;
+    this.nodes = []; this.edges = [];
+    this.view = { x: 0, y: 0, k: 1 };
+    this.particles = [];
+    this.running = false; this.t = 0;
+    this.selected = null;
+    this._bind();
+  }
+
+  /* nodes: [{id, kind:'trait'|'memory', label, weight, state}], edges: [[idA,idB]] */
+  setData(nodes, edges) {
+    const W = this.cv.clientWidth || 800, H = this.cv.clientHeight || 600;
+    this.nodes = nodes.map((n, i) => {
+      const old = this.nodes.find(o => o.id === n.id);
+      const ang = (i / nodes.length) * Math.PI * 2;
+      return { ...n, ...old, x: old?.x ?? W / 2 + Math.cos(ang) * 140, y: old?.y ?? H / 2 + Math.sin(ang) * 140, vx: 0, vy: 0 };
+    });
+    this.edges = edges
+      .map(([a, b]) => [this.nodes.find(n => n.id === a), this.nodes.find(n => n.id === b)])
+      .filter(([a, b]) => a && b);
+    if (!this.running) { this.running = true; requestAnimationFrame(() => this._tick()); }
+  }
+
+  _bind() {
+    const cv = this.cv;
+    new ResizeObserver(() => this._resize()).observe(cv.parentElement);
+    this._resize();
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const k = Math.min(3, Math.max(0.4, this.view.k * (e.deltaY < 0 ? 1.12 : 0.89)));
+      this.view.k = k;                       /* 以指针为锚的缩放（简化：中心锚） */
+    }, { passive: false });
+    let drag = null;
+    cv.addEventListener('pointerdown', (e) => {
+      const p = this._toWorld(e);
+      const hit = this._pick(p);
+      if (hit) { this.selected = hit.id; this.onPick?.(hit); }
+      else { drag = { x: e.clientX, y: e.clientY, vx: this.view.x, vy: this.view.y }; this.selected = null; this.onPick?.(null); }
+      cv.setPointerCapture(e.pointerId);
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      this.view.x = drag.vx + (e.clientX - drag.x);
+      this.view.y = drag.vy + (e.clientY - drag.y);
+    });
+    cv.addEventListener('pointerup', () => { drag = null; });
+  }
+
+  _resize() {
+    const r = this.cv.parentElement.getBoundingClientRect();
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    this.cv.width = r.width * dpr; this.cv.height = r.height * dpr;
+    this.W = r.width; this.H = r.height;
+    if (!this.particles.length) {
+      const rnd = (n) => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296 * n;
+      this.particles = Array.from({ length: 90 }, () => ({
+        x: rnd(r.width), y: rnd(r.height), r: rnd(1.4) + 0.5, a: rnd(0.5) + 0.2, ph: rnd(6.28),
+      }));
+    }
+  }
+
+  _toWorld(e) {
+    const r = this.cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left - this.W / 2 - this.view.x) / this.view.k + this.W / 2,
+             y: (e.clientY - r.top - this.H / 2 - this.view.y) / this.view.k + this.H / 2 };
+  }
+  _pick(p) {
+    let best = null, bd = 26 / this.view.k;
+    for (const n of this.nodes) {
+      const d = Math.hypot(n.x - p.x, n.y - p.y);
+      if (d < bd + n.weight * 3) { bd = d; best = n; }
+    }
+    return best;
+  }
+
+  _tick() {
+    if (!this.running) return;
+    this.t += 0.016;
+    this._physics();
+    this._draw();
+    requestAnimationFrame(() => this._tick());
+  }
+
+  _physics() {
+    const N = this.nodes, W = this.W, H = this.H;
+    for (let i = 0; i < N.length; i++) {
+      for (let j = i + 1; j < N.length; j++) {
+        const a = N[i], b = N[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d2 = Math.max(dx * dx + dy * dy, 400);
+        const f = 2400 / d2;
+        const d = Math.sqrt(d2);
+        a.vx -= (dx / d) * f; a.vy -= (dy / d) * f;
+        b.vx += (dx / d) * f; b.vy += (dy / d) * f;
+      }
+    }
+    for (const [a, b] of this.edges) {
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.max(Math.hypot(dx, dy), 1);
+      const f = (d - 150) * 0.008;
+      a.vx += (dx / d) * f; a.vy += (dy / d) * f;
+      b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
+    }
+    for (const n of N) {
+      n.vx += (W / 2 - n.x) * 0.0015; n.vy += (H / 2 - n.y) * 0.0015;   // 向心
+      n.vx *= 0.85; n.vy *= 0.85;
+      n.x += n.vx; n.y += n.vy;
+    }
+  }
+
+  _draw() {
+    const x = this.ctx, dpr = Math.min(2, devicePixelRatio || 1);
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, this.W, this.H);
+    x.fillStyle = '#000'; x.fillRect(0, 0, this.W, this.H);
+
+    x.save();
+    x.translate(this.W / 2 + this.view.x, this.H / 2 + this.view.y);
+    x.scale(this.view.k, this.view.k);
+    x.translate(-this.W / 2, -this.H / 2);
+
+    /* 背景星尘（不随选中变化，恒定微闪） */
+    for (const p of this.particles) {
+      const tw = 0.55 + 0.45 * Math.sin(this.t * 1.2 + p.ph);
+      x.fillStyle = `rgba(255,255,255,${(p.a * tw * 0.5).toFixed(3)})`;
+      x.beginPath(); x.arc(p.x, p.y, p.r, 0, 7); x.fill();
+    }
+
+    /* 连线 */
+    for (const [a, b] of this.edges) {
+      const g = x.createLinearGradient(a.x, a.y, b.x, b.y);
+      g.addColorStop(0, 'rgba(255,255,255,0.30)');
+      g.addColorStop(1, 'rgba(230,230,234,0.14)');
+      x.strokeStyle = g; x.lineWidth = 0.8;
+      x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
+    }
+
+    /* 节点 */
+    for (const n of this.nodes) {
+      const r = 3 + n.weight * 1.4;
+      const dormant = n.state === 'dormant';
+      const alpha = dormant ? 0.32 : 1;
+      const sel = this.selected === n.id;
+      const col = n.kind === 'trait' ? '255,255,255' : '214,214,218';
+      x.shadowColor = `rgba(${col},${dormant ? 0.25 : 0.85})`;
+      x.shadowBlur = (sel ? 26 : 12) * (this.view.k > 0.7 ? 1 : 0.7);
+      x.fillStyle = `rgba(${col},${alpha})`;
+      x.beginPath(); x.arc(n.x, n.y, r, 0, 7); x.fill();
+      x.shadowBlur = 0;
+      if (sel) { x.strokeStyle = 'rgba(255,255,255,0.9)'; x.lineWidth = 1.4;
+        x.beginPath(); x.arc(n.x, n.y, r + 5, 0, 7); x.stroke(); }
+      x.fillStyle = `rgba(244,244,245,${dormant ? 0.4 : 0.75})`;
+      x.font = '500 10.5px Inter, "PingFang SC", sans-serif';
+      x.textAlign = 'center';
+      x.fillText(n.label, n.x, n.y - r - 6);
+    }
+    x.restore();
+  }
+}
