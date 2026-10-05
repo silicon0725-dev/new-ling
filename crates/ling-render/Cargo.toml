@@ -1,0 +1,11 @@
+# 「灵」成长星图渲染器
+[package]
+name = "ling-render"
+version.workspace = true
+edition.workspace = true
+description = "成长星图 wgpu 离屏渲染器：消费 ling-core 力导向布局，产出 RGBA8 像素缓冲供上层 UI 成像"
+
+[dependencies]
+# 锁定环境缓存版本，保证离线可构建；只依赖 wgpu 与 ling-core（禁止 slint）
+wgpu = "=30.0.1"
+ling-core = { path = "../ling-core" }
