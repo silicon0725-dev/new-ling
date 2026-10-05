@@ -5,7 +5,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; };
 const fmtTs = (ts) => new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const state = { charId: null, sessionId: null, streaming: null, starmap: null, tlFocus: null };
+const state = { charId: null, sessionId: null, streaming: null, starmap: null, worldMap: null, tlFocus: null, worldView: null, kbTab: 'char' };
 
 /* ── 图标注入：所有 [data-icon] 元素插入内联 SVG（动态渲染后需再调用） ── */
 function injectIcons(root = document) {
@@ -43,7 +43,7 @@ const requireApi = () => {
 const llmOpts = () => ({ ...Store.settings });
 
 /* ── 路由 ── */
-const routes = ['chat', 'characters', 'territory', 'starmap', 'worlds', 'settings'];   /* 顺序即过渡方向轴 */
+const routes = ['chat', 'kb', 'territory', 'starmap', 'settings'];   /* 顺序即过渡方向轴 */
 let booted = false;
 let pageSliding = false;     /* 页面滑动中抑制列表级联入场, 避免双重动画 */
 
@@ -67,20 +67,25 @@ function unghost(el) {
 }
 
 function route() {
-  const name = (location.hash.replace('#/', '') || 'chat').split('?')[0];
-  const page = routes.includes(name) ? name : 'chat';
+  const parts = (location.hash.replace('#/', '') || 'chat').split('?')[0].split('/');
+  let page = parts[0];
+  if (page === 'characters') { page = 'kb'; parts[1] = parts[1] || 'char'; }   /* 旧链接兼容 */
+  if (page === 'worlds') { page = 'kb'; parts[1] = parts[1] || 'world'; }
+  if (!routes.includes(page)) page = 'chat';
+  if (page === 'kb') state.kbTab = parts[1] === 'world' ? 'world' : 'char';
   const prev = document.querySelector('.page.active');
   const next = document.querySelector(`.page[data-page="${page}"]`);
   const sliding = booted && prev && prev !== next;      /* 首次进入/同页刷新: 不滑 */
   if (next.classList.contains('page-ghost')) unghost(next);   /* 快速来回切: 新页可能是退场中的幽灵 */
   pageSliding = sliding;
 
-  $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  $$('.nav-item:not(.sub)').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  document.querySelector('.nav').classList.toggle('kb-open', page === 'kb');
   if (booted) Sfx.play('select');
   if (sliding) ghost(prev);                             /* 先冻结旧页(还在流内), 再切 active */
 
   $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
-  ({ chat: renderChat, characters: renderChars, territory: renderTerritory, starmap: renderStarmap, worlds: renderWorlds, settings: renderSettings })[page]();
+  ({ chat: renderChat, kb: renderKB, territory: renderTerritory, starmap: renderStarmap, settings: renderSettings })[page]();
   EdgeGlow.collect();                 /* 页面重渲染后重新收集发光目标 */
 
   if (sliding) {
@@ -112,7 +117,7 @@ function renderChat() {
   const c = Store.char(state.charId);
   $('#chat-empty').style.display = c ? 'none' : 'flex';
   $('#chat-body').style.display = c ? 'flex' : 'none';
-  if (!c) { $('#char-list-empty').innerHTML = '<div class="glyph">🎭</div>还没有角色。<a href="#/characters">去角色页铸造 →</a>'; return; }
+  if (!c) { $('#char-list-empty').innerHTML = '<div class="glyph">🎭</div>还没有角色。<a href="#/kb/char">去铸造 →</a>'; return; }
   if (!state.sessionId || !Store.session(c.id, state.sessionId)) state.sessionId = c.sessions[0]?.id ?? null;
   if (!state.sessionId) { const s = Store.newSession(c.id); state.sessionId = s.id; }
 
@@ -239,7 +244,7 @@ async function distillAsync(charId, userText, aiText) {
 function renderChars() {
   const chars = Store.characters;
   $('#char-grid').innerHTML = chars.map(c => `
-    <div class="card char-card clickable" data-open="${c.id}">
+    <div class="card char-card clickable ${c.id === state.charId ? 'current' : ''}" data-open="${c.id}">
       <div class="avatar">${esc(c.emoji)}</div>
       <div class="name">${esc(c.name)}</div>
       <div class="persona">${esc(c.persona)}</div>
@@ -271,11 +276,18 @@ function openCharModal(char) {
   Sfx.play('open');
   $('#f-name').focus();
 }
-async function forge() {
-  const src = $('#forge-src').value.trim();
-  if (!src) return;
+/* ═─ 铸造核心（角色/世界 · 双模式共用）══ */
+const pickedFiles = { c: [], w: [] };           /* 各模态已选文件 */
+async function collectFiles(k) {
+  if (!pickedFiles[k].length) return '';
+  const docs = await FileKit.readSettingFiles(pickedFiles[k]);
+  const errs = docs.filter(d => d.error);
+  if (errs.length) toast(errs.map(e => e.name).join('、') + ' 不支持，已跳过', true);
+  return docs.filter(d => d.text).map(d => `【${d.name}】\n${d.text.slice(0, 12000)}`).join('\n\n').slice(0, 50000);
+}
+async function forgeCharFrom(src, btn) {
   if (!requireApi()) return;
-  const btn = $('#forge-btn'); btn.disabled = true; btn.textContent = '铸造中……';
+  const prev = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = '铸造中……'; }
   try {
     const out = await LLM.complete({ ...llmOpts(), messages: [
       { role: 'system', content: '把素材铸成角色卡。只输出 JSON：{"emoji":"一个emoji","name":"名字","persona":"人设(≤120字)","style":"说话风格(≤40字)","greeting":"开场白(≤60字)","traits":["特质",…]}' },
@@ -289,7 +301,38 @@ async function forge() {
     Sfx.play('achievement');
     toast('铸造完成，可继续微调后保存');
   } catch (e) { Sfx.play('error'); toast('铸造失败：' + e.message + '（可手动填写）', true); }
-  finally { btn.disabled = false; btn.innerHTML = icon('wand-sparkles', 15) + ' 铸造'; }
+  finally { if (btn) { btn.disabled = false; btn.textContent = prev; } }
+}
+async function forge() {                         /* 从已有设定：文件 + 粘贴 */
+  const files = await collectFiles('c').catch(e => { toast('读取文件失败：' + e.message, true); return ''; });
+  const src = [files, $('#forge-src').value.trim()].filter(Boolean).join('\n\n');
+  if (!src) { toast('先选择文件或粘贴素材', true); return; }
+  await forgeCharFrom(src, $('#forge-btn'));
+}
+async function worldForgeFrom(material, btn, isSeed) {
+  if (!requireApi()) return;
+  const prev = btn?.textContent; if (btn) { btn.disabled = true; btn.textContent = '铸造中……'; }
+  try {
+    LLM.guard(Store.settings.baseUrl);
+    const out = await LLM.complete({
+      ...llmOpts(),
+      messages: [{ role: 'user', content:
+        (isSeed ? '这是一句种子描述，请据此创作一个基本世界观（实体 6~10 个）。\n' : '') +
+        '从下面的世界观设定中提取世界星图实体。只输出 JSON，不要多余文字。格式：\n' +
+        '{"name":"世界名","intro":"50字内简介","nodes":[{"label":"实体名","kind":"大陆|组织|概念|事件|人物","weight":1-5,"desc":"20字内描述"}],"edges":[["实体A","实体B"]]}\n' +
+        '提取 12~22 个最重要的实体（大陆/核心组织/关键概念/重大事件/主角），关系边 15~30 条。\n\n' + material.slice(0, 60000) }],
+    });
+    const parsed = LLM.extractJson(out);
+    const built = applyParsedWorld(parsed,
+      $('#w-name').value.trim() || parsed.name || '新世界',
+      $('#w-emoji').value.trim() || '🌐',
+      $('#w-intro').value.trim() || parsed.intro || '');
+    $('#w-name').value = built.name; $('#w-emoji').value = built.emoji; $('#w-intro').value = built.intro;
+    window.__parsedWorld = built;                 /* 保存按钮随取 */
+    Sfx.play('achievement');
+    toast(`铸造出 ${built.nodes.length} 实体 · ${built.edges.length} 关系`);
+  } catch (e) { toast('铸造失败：' + e.message, true); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = prev; } }
 }
 function saveChar() {
   const fields = {
@@ -409,11 +452,21 @@ function pickWorldDetail(node) {
   el.classList.add('show');
   Motion.motion(el, { y: 0, opacity: 1, speed: 'fast' }, { from: { y: 8, opacity: 0 } });
 }
+function renderKB() {
+  const kb = state.kbTab === 'world' ? 'world' : 'char';
+  state.kbTab = kb;
+  $$('.nav-item.sub').forEach(s => s.classList.toggle('active', s.dataset.kb === kb));
+  const inWorldView = kb === 'world' && state.worldView && !!Store.world(state.worldView);
+  $('#char-pane').style.display = (!inWorldView && kb === 'char') ? '' : 'none';
+  $('#world-pane').style.display = (!inWorldView && kb === 'world') ? '' : 'none';
+  $('#world-view').style.display = inWorldView ? '' : 'none';
+  if (kb === 'char') renderChars(); else renderWorlds();
+}
 function renderWorlds() {
-  const listWrap = $('#world-list-wrap'), view = $('#world-view');
+  const view = $('#world-view');
   if (!state.worldView || !Store.world(state.worldView)) {
     state.worldView = null;
-    listWrap.style.display = ''; view.style.display = 'none';
+    view.style.display = 'none';
     const ws = Store.worlds;
     $('#world-grid').innerHTML = ws.map(w => `
       <div class="card world-card clickable" data-openw="${w.id}">
@@ -430,7 +483,7 @@ function renderWorlds() {
     return;
   }
   /* 详情：世界星图 */
-  listWrap.style.display = 'none'; view.style.display = '';
+  view.style.display = '';
   const w = Store.world(state.worldView);
   if (!state.worldMap) state.worldMap = new Starmap($('#world-map'), pickWorldDetail);
   state.worldMap.setData(w.nodes, w.edges);
@@ -472,9 +525,15 @@ async function testConn() {
 function bind() {
   injectIcons();
   renderSfxToggle();
-  $$('.nav-item').forEach(n => n.addEventListener('click', () => {
+  $$('.nav-item:not(.sub)').forEach(n => n.addEventListener('click', () => {
     const target = '#/' + n.dataset.page;
     if (location.hash === target) route();   /* 同页重点 = 强制刷新 */
+    else location.hash = target;
+  }));
+  /* 知识库二级胶囊: 角色 / 世界 */
+  $$('.nav-item.sub').forEach(n => n.addEventListener('click', () => {
+    const target = '#/kb/' + n.dataset.kb;
+    if (location.hash === target) route();
     else location.hash = target;
   }));
   /* 键盘可达：导航支持 Enter/Space */
@@ -559,7 +618,16 @@ function bind() {
     const dc = e.target.closest('[data-delchar]');
     if (dc) { if (confirm('删除该角色及其全部数据？')) { Store.removeCharacter(dc.dataset.delchar); Sfx.play('delete'); renderChars(); toast('已删除'); } return; }
     const open = e.target.closest('[data-open]');
-    if (open) { state.charId = open.dataset.open; location.hash = '#/chat'; }
+    if (open) {                                            /* 点卡片: 已是当前角色→查看星图; 其他→仅切换不跳转 */
+      const id = open.dataset.open;
+      if (state.charId === id) { location.hash = '#/starmap'; }
+      else {
+        state.charId = id;
+        document.querySelectorAll('#char-grid .char-card').forEach(c => c.classList.toggle('current', c.dataset.open === id));
+        toast('当前角色：' + (Store.char(id)?.name ?? id));
+        Sfx.play('select');
+      }
+    }
   });
   $('#forge-btn').addEventListener('click', forge);
   $('#char-save').addEventListener('click', saveChar);
@@ -570,13 +638,13 @@ function bind() {
   $('#world-grid').addEventListener('click', (e) => {
     const dw = e.target.closest('[data-delw]');
     if (dw) {
-      if (confirm('删除该世界？')) { Store.removeWorld(dw.dataset.delw); Sfx.play('delete'); renderWorlds(); toast('世界已删除'); }
+      if (confirm('删除该世界？')) { Store.removeWorld(dw.dataset.delw); Sfx.play('delete'); renderKB(); toast('世界已删除'); }
       return;
     }
     const ow = e.target.closest('[data-openw]');
-    if (ow) { state.worldView = ow.dataset.openw; renderWorlds(); Sfx.play('select'); }
+    if (ow) { state.worldView = ow.dataset.openw; renderKB(); Sfx.play('select'); }
   });
-  $('#world-back').addEventListener('click', () => { state.worldView = null; pickWorldDetail(null); renderWorlds(); });
+  $('#world-back').addEventListener('click', () => { state.worldView = null; pickWorldDetail(null); renderKB(); });
   $('#world-cancel').addEventListener('click', () => $('#world-modal').classList.remove('open'));
   $('#world-save').addEventListener('click', () => {
     const name = $('#w-name').value.trim();
@@ -590,35 +658,47 @@ function bind() {
     window.__parsedWorld = null;
     $('#world-modal').classList.remove('open');
     $('#w-name').value = ''; $('#w-emoji').value = '🌐'; $('#w-intro').value = ''; $('#w-lore').value = '';
-    renderWorlds(); toast('世界已铸造');
-    state.worldView = w.id; renderWorlds();
+    renderKB(); toast('世界已铸造');
+    state.worldView = w.id; renderKB();
   });
-  $('#w-parse-btn').addEventListener('click', async () => {
-    const lore = $('#w-lore').value.trim();
-    if (!lore) { toast('先丢入世界素材', true); return; }
-    if (!requireApi()) return;
-    const btn = $('#w-parse-btn');
-    btn.disabled = true; btn.textContent = '铸造中…';
-    try {
-      LLM.guard(Store.settings.baseUrl);
-      const out = await LLM.complete({
-        ...llmOpts(),
-        messages: [{ role: 'user', content:
-          '从下面的世界观设定中提取世界星图实体。只输出 JSON，不要多余文字。格式：\n' +
-          '{"name":"世界名","intro":"50字内简介","nodes":[{"label":"实体名","kind":"大陆|组织|概念|事件|人物","weight":1-5,"desc":"20字内描述"}],"edges":[["实体A","实体B"]]}\n' +
-          '提取 12~22 个最重要的实体（大陆/核心组织/关键概念/重大事件/主角），关系边 15~30 条。\n\n' + lore.slice(0, 6000) }],
-      });
-      const parsed = LLM.extractJson(out);
-      const built = applyParsedWorld(parsed,
-        $('#w-name').value.trim() || parsed.name || '新世界',
-        $('#w-emoji').value.trim() || '🌐',
-        $('#w-intro').value.trim() || parsed.intro || '');
-      $('#w-name').value = built.name; $('#w-emoji').value = built.emoji; $('#w-intro').value = built.intro;
-      window.__parsedWorld = built;                 /* 保存按钮随取 */
-      toast(`铸造出 ${built.nodes.length} 实体 · ${built.edges.length} 关系`);
-    } catch (e) { toast('铸造失败：' + e.message, true); }
-    finally { btn.disabled = false; btn.textContent = '铸造'; }
+  $('#w-parse-btn').addEventListener('click', async () => {          /* 从已有设定: 文件 + 粘贴 */
+    const files = await collectFiles('w').catch(e => { toast('读取文件失败：' + e.message, true); return ''; });
+    const material = [files, $('#w-lore').value.trim()].filter(Boolean).join('\n\n');
+    if (!material) { toast('先选择文件或粘贴素材', true); return; }
+    await worldForgeFrom(material, $('#w-parse-btn'));
   });
+  $('#w-seed-btn').addEventListener('click', async () => {           /* 从零开始: 一句话种子 */
+    const seed = $('#w-seed').value.trim();
+    if (!seed) { toast('先用一句话描述世界', true); return; }
+    await worldForgeFrom(seed, $('#w-seed-btn'), true);
+  });
+  $('#c-seed-btn').addEventListener('click', async () => {           /* 角色从零开始 */
+    const seed = $('#c-seed').value.trim();
+    if (!seed) { toast('先用一句话描述 TA', true); return; }
+    await forgeCharFrom('根据这句话创作角色：' + seed, $('#c-seed-btn'));
+  });
+
+  /* 铸造双模式: 模式切换 + 文件选择(可移除 chip) */
+  const wireForgeModal = (k, modesSel, rootSel) => {
+    $(modesSel).addEventListener('click', (e) => {
+      const m = e.target.closest('.forge-mode'); if (!m) return;
+      $(modesSel).querySelectorAll('.forge-mode').forEach(b => b.classList.toggle('active', b === m));
+      $(rootSel).querySelectorAll('.forge-panel').forEach(p => p.hidden = p.dataset.panel !== m.dataset.mode);
+    });
+    const input = $('#' + k + '-files'), chips = $('#' + k + '-file-chips');
+    const renderChips = () => {
+      chips.innerHTML = pickedFiles[k].map((f, i) =>
+        `<span class="chip">${esc(f.name)} <b data-x="${i}" title="移除">×</b></span>`).join('');
+    };
+    $('#' + k + '-files-btn').addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { pickedFiles[k].push(...input.files); input.value = ''; renderChips(); });
+    chips.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-x]'); if (!x) return;
+      pickedFiles[k].splice(+x.dataset.x, 1); renderChips();
+    });
+  };
+  wireForgeModal('c', '#c-modes', '#char-modal');
+  wireForgeModal('w', '#w-modes', '#world-modal');
 
   /* 领地 */
   $('#residents').addEventListener('click', (e) => {

@@ -14,10 +14,15 @@
 <button class="iconbtn sidenav-toggle" id="sidenav-toggle" aria-label="收起侧边栏" data-mode="collapse"></button>
 <nav class="nav" aria-label="页面导航">
   <div class="nav-item active" data-page="chat" data-icon="message-circle" tabindex="0"><span class="nav-label">对话</span></div>
-  <div class="nav-item" data-page="characters" data-icon="users" tabindex="0"><span class="nav-label">角色</span></div>
+  <div class="nav-kb" id="nav-kb">
+    <div class="nav-item" data-page="kb" data-icon="library" tabindex="0"><span class="nav-label">知识库</span></div>
+    <div class="nav-sub" id="nav-sub">
+      <div class="nav-item sub" data-kb="char" data-icon="users" tabindex="0"><span class="nav-label">角色</span></div>
+      <div class="nav-item sub" data-kb="world" data-icon="globe" tabindex="0"><span class="nav-label">世界</span></div>
+    </div>
+  </div>
   <div class="nav-item" data-page="territory" data-icon="house" tabindex="0"><span class="nav-label">领地</span></div>
   <div class="nav-item" data-page="starmap" data-icon="sparkles" tabindex="0"><span class="nav-label">星图</span></div>
-  <div class="nav-item" data-page="worlds" data-icon="globe" tabindex="0"><span class="nav-label">世界</span></div>
 </nav>
 <button class="iconbtn sfx-float" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
 
@@ -70,15 +75,29 @@
     </div>
   </section>
 
-  <!-- ═══ 角色 ═══ -->
-  <section class="page" data-page="characters">
-    <div class="page-main">
+  <!-- ═══ 知识库（角色 · 世界）═══ -->
+  <section class="page" data-page="kb">
+    <div class="page-main" id="char-pane">
       <div style="display:flex; align-items:center; padding: var(--sp-4) var(--sp-5) 0">
         <h2 style="font-size:var(--fs-lg)">角色</h2>
         <span style="flex:1"></span>
         <button class="btn primary" id="add-char" data-icon="wand-sparkles">铸造新角色</button>
       </div>
       <div class="char-grid" id="char-grid"></div>
+    </div>
+    <div class="page-main" id="world-pane" style="display:none">
+      <div style="display:flex; align-items:center; padding: var(--sp-4) var(--sp-5) 0">
+        <h2 style="font-size:var(--fs-lg)">世界</h2>
+        <span style="flex:1"></span>
+        <button class="btn primary" id="add-world" data-icon="wand-sparkles">铸造世界</button>
+      </div>
+      <div class="world-grid" id="world-grid"></div>
+    </div>
+    <div class="world-view" id="world-view" style="display:none">
+      <canvas id="world-map"></canvas>
+      <div class="world-detail" id="world-detail"></div>
+      <div class="world-intro" id="world-intro"></div>
+      <button class="iconbtn world-back" id="world-back" data-icon="arrow-left" aria-label="返回世界列表" title="返回世界列表"></button>
     </div>
   </section>
 
@@ -104,24 +123,6 @@
     <div class="starmap-wrap">
       <canvas id="starmap"></canvas>
       <div class="node-detail" id="node-detail"></div>
-    </div>
-  </section>
-
-  <!-- ═══ 世界 ═══ -->
-  <section class="page" data-page="worlds">
-    <div class="page-main" id="world-list-wrap">
-      <div style="display:flex; align-items:center; padding: var(--sp-4) var(--sp-5) 0">
-        <h2 style="font-size:var(--fs-lg)">世界</h2>
-        <span style="flex:1"></span>
-        <button class="btn primary" id="add-world" data-icon="wand-sparkles">铸造世界</button>
-      </div>
-      <div class="world-grid" id="world-grid"></div>
-    </div>
-    <div class="world-view" id="world-view" style="display:none">
-      <canvas id="world-map"></canvas>
-      <div class="world-detail" id="world-detail"></div>
-      <div class="world-intro" id="world-intro"></div>
-      <button class="iconbtn world-back" id="world-back" data-icon="arrow-left" aria-label="返回世界列表" title="返回世界列表"></button>
     </div>
   </section>
 
@@ -163,9 +164,29 @@
 <div class="overlay" id="world-modal">
   <div class="modal">
     <h3>铸造世界</h3>
-    <div class="field"><label>素材（世界观设定 / 大陆势力 / 力量体系 / 历史……）</label>
-      <textarea class="textarea" id="w-lore" style="min-height:110px" placeholder="丢进来，AI 直接出世界星图"></textarea></div>
-    <button class="btn" id="w-parse-btn" data-icon="wand-sparkles">铸造</button>
+    <div style="margin-bottom:var(--sp-4)">
+      <div class="forge-modes" id="w-modes">
+        <button class="forge-mode active" data-mode="scratch" type="button">从零开始<small>一句话 · AI 生成基础世界观</small></button>
+        <button class="forge-mode" data-mode="files" type="button">从已有设定开始<small>md · docx · txt · zip 归档</small></button>
+      </div>
+      <div class="forge-panel" data-panel="scratch">
+        <div class="row">
+          <input class="input" id="w-seed" placeholder="一句话描述世界：比如「辉能支撑的五大大陆文明」">
+          <button class="btn" id="w-seed-btn" data-icon="wand-sparkles">生成</button>
+        </div>
+      </div>
+      <div class="forge-panel" data-panel="files" hidden>
+        <div class="row" style="margin-bottom:var(--sp-2)">
+          <button class="btn" id="w-files-btn" data-icon="file-up">选择文件</button>
+          <span style="font-size:var(--fs-xs); color:var(--text-3)">md · markdown · txt · docx · zip（可多选）</span>
+          <input type="file" id="w-files" multiple accept=".md,.markdown,.txt,.docx,.zip" hidden>
+        </div>
+        <div class="file-chips" id="w-file-chips"></div>
+        <div class="field" style="margin-top:var(--sp-2)"><label>或直接粘贴</label>
+          <textarea class="textarea" id="w-lore" style="min-height:64px" placeholder="世界观设定：大陆、势力、力量体系、历史……"></textarea></div>
+        <button class="btn" id="w-parse-btn" data-icon="wand-sparkles">铸造</button>
+      </div>
+    </div>
     <div class="row" style="margin:var(--sp-4) 0 var(--sp-3)">
       <div style="width:70px"><input class="input" id="w-emoji" maxlength="4" style="text-align:center" value="🌐"></div>
       <input class="input" id="w-name" placeholder="世界的名字">
@@ -182,9 +203,27 @@
   <div class="modal">
     <h3 id="modal-title">铸造角色</h3>
     <div id="forge-area" style="margin-bottom:var(--sp-4)">
-      <div class="field"><label>素材（人设 / 小说片段 / 设定文本）</label>
-        <textarea class="textarea" id="forge-src" style="min-height:90px" placeholder="丢进来，AI 直接出角色卡"></textarea></div>
-      <button class="btn" id="forge-btn" data-icon="wand-sparkles">铸造</button>
+      <div class="forge-modes" id="c-modes">
+        <button class="forge-mode active" data-mode="scratch" type="button">从零开始<small>一句话 · AI 生成基础设定</small></button>
+        <button class="forge-mode" data-mode="files" type="button">从已有设定开始<small>md · docx · txt · zip 归档</small></button>
+      </div>
+      <div class="forge-panel" data-panel="scratch">
+        <div class="row">
+          <input class="input" id="c-seed" placeholder="一句话描述 TA：比如「温柔的月亮精灵，怕黑但爱笑」">
+          <button class="btn" id="c-seed-btn" data-icon="wand-sparkles">生成</button>
+        </div>
+      </div>
+      <div class="forge-panel" data-panel="files" hidden>
+        <div class="row" style="margin-bottom:var(--sp-2)">
+          <button class="btn" id="c-files-btn" data-icon="file-up">选择文件</button>
+          <span style="font-size:var(--fs-xs); color:var(--text-3)">md · markdown · txt · docx · zip（可多选）</span>
+          <input type="file" id="c-files" multiple accept=".md,.markdown,.txt,.docx,.zip" hidden>
+        </div>
+        <div class="file-chips" id="c-file-chips"></div>
+        <div class="field" style="margin-top:var(--sp-2)"><label>或直接粘贴</label>
+          <textarea class="textarea" id="forge-src" style="min-height:64px" placeholder="人设 / 小说片段 / 设定文本"></textarea></div>
+        <button class="btn" id="forge-btn" data-icon="wand-sparkles">铸造</button>
+      </div>
     </div>
     <input type="hidden" id="f-id">
     <div class="row" style="margin-bottom:var(--sp-3)">
@@ -207,6 +246,7 @@
 <script src="js/store.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/llm.js"></script>
+<script src="js/filekit.js"></script>
 <script src="js/motion.js"></script>
 <script src="js/starmap.js"></script>
 <script src="js/sfx.js"></script>

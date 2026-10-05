@@ -55,6 +55,31 @@ body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏�
   display: flex; gap: 2px; padding: 4px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  max-width: calc(100vw - 24px);
+}
+/* 知识库二级胶囊: 「知识库」选项自身从中心变长(min-width 0→178 过渡, 收起态
+   宽度纯内容决定与其他胶囊一致), 二级菜单 absolute 脱离轨道测量, 在选项内部展开 */
+.nav-kb {
+  position: relative; display: grid; grid-template-columns: 1fr;
+  min-width: 0; transition: min-width .3s var(--ease);
+}
+.nav-kb > .nav-item { grid-area: 1 / 1; justify-content: center; transition: opacity .2s var(--ease); }
+.nav.kb-open .nav-kb { min-width: 178px; }
+.nav.kb-open .nav-kb > .nav-item { opacity: 0; pointer-events: none; }   /* 标签淡出, 由二级菜单接管 */
+.nav-sub {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--border); border-radius: 999px;      /* 内嵌描边: 变长选项里的分段控件 */
+  background: var(--surface);
+  opacity: 0; pointer-events: none;
+  transition: opacity .22s var(--ease) .06s;
+}
+.nav.kb-open .nav-sub { opacity: 1; pointer-events: auto; }
+.nav-item.sub { padding: 4px 11px; font-size: var(--fs-sm); gap: 6px; flex: 1; justify-content: center; }
+/* 窄屏文字隐藏后: 收起态=纯图标同兄弟胶囊, 展开态按图标收缩 */
+@media (max-width: 850px) {
+  .nav.kb-open .nav-kb { min-width: 84px; }
+  .nav-item.sub { padding: 4px; gap: 0; }
 }
 .nav-item {
   position: relative; display: flex; align-items: center; gap: 7px;
@@ -279,6 +304,7 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
 
 /* ── 角色页 ── */
 .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-4); padding: var(--sp-5); }
+.char-card.current { --ring: var(--border-strong); box-shadow: var(--glow); }   /* 当前对话角色 */
 .char-card { display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; will-change: transform; }   /* 入场由 Motion 级联驱动; 容器查询=自动检测; 偏移动画纯平移(与 origin 无关), origin 保持默认中心=按下3D倾斜绕心下沉 */
 /* 卡片太窄时按钮只留图标(文字改由 title 提示), 杜绝竖排;
    文字用 max-width+opacity 折叠动画(非 display 硬切), gap 同步归零让图标居中 */
@@ -315,7 +341,7 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
 /* 星图视口全出血: 顶到屏幕边缘 + 铺到侧栏毛玻璃之下(星图不被侧栏挤开; 聊天等内容页保持挤开) */
 /* 世界详情视图(画布态)同样全出血 */
 main:has(> .page.active[data-page='starmap']),
-main:has(> .page.active[data-page='worlds'] .world-view:not([style*="none"])) { padding-top: 0; margin-left: 0; }
+main:has(> .page.active[data-page='kb'] .world-view:not([style*="none"])) { padding-top: 0; margin-left: 0; }
 #starmap { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
 #starmap:active { cursor: grabbing; }
 .node-detail {
@@ -327,6 +353,25 @@ main:has(> .page.active[data-page='worlds'] .world-view:not([style*="none"])) { 
 }
 .node-detail.show { display: block; }   /* 入场动效由 Motion.motion 驱动(js/motion.js) */
 .node-detail .kind { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* ── 铸造双模式 ── */
+.forge-modes { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.forge-mode {
+  flex: 1; text-align: left; padding: 10px 12px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  cursor: pointer; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.forge-mode small { font-size: var(--fs-xs); color: var(--text-3); }
+.forge-mode.active { background: var(--surface-strong); color: var(--text); border-color: var(--border-strong); box-shadow: var(--glow); }
+.file-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs);
+  padding: 4px 9px; border-radius: 999px; background: var(--surface-strong);
+  border: 1px solid var(--border); color: var(--text-2);
+}
+.chip b { cursor: pointer; color: var(--text-3); font-weight: 400; }
+.chip b:hover { color: var(--danger); }
 
 /* ── 世界页 ── */
 .world-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-4); padding: var(--sp-5); width: 100%; }
@@ -376,7 +421,12 @@ main:has(> .page.active[data-page='worlds'] .world-view:not([style*="none"])) { 
   background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
   padding: var(--sp-5); }   /* 入场由 Motion 引擎驱动 */
 .modal h3 { font-size: var(--fs-lg); margin-bottom: var(--sp-4); }
-.modal .actions { display: flex; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-5); }
+.modal .actions {
+  position: sticky; bottom: 0; z-index: 2;                 /* 钉在容器右下, 不随内容滚走/不被遮挡 */
+  display: flex; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-5);
+  padding: var(--sp-3) 0 2px; background: var(--bg-2);
+  border-top: 1px solid var(--border);
+}
 
 /* ── 移动端抽屉遮罩 ── */
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55);
