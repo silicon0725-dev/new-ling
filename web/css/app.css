@@ -88,8 +88,12 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top
 /* 桌面: 展开时隐藏悬浮开关(侧栏头部自带收起钮), 收起后显示 */
 .page-side {
   width: 248px; flex-shrink: 0; border-right: 1px solid var(--border);
-  overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
+  overflow-y: auto; overflow-x: hidden;
+  padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
+  /* 桌面收起动画: 整栏向左滑出(margin 逐帧变化 → 对话区/输入舱被平滑挤开、回位) */
+  transition: margin-left .3s var(--ease);
 }
+body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑出屏幕 */
 .side-head {
   display: flex; align-items: center; justify-content: space-between;
   min-height: 34px; margin-bottom: 2px;
@@ -98,7 +102,6 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top
   font-family: Georgia, 'Noto Serif SC', serif; font-size: var(--fs-brand); font-weight: 600;
   letter-spacing: -0.01em; user-select: none;
 }
-body.side-closed .page-side { display: none; }    /* 桌面收起: 整栏移除, 内容占满 */
 .side-spacer { flex: 1; }
 .side-foot {
   display: flex; align-items: center; justify-content: space-between;
@@ -333,11 +336,12 @@ body.side-closed .page-side { display: none; }    /* 桌面收起: 整栏移除,
     transform: translateX(-105%);              /* 收起 */
     transition: transform var(--dur-med) var(--ease);
     box-shadow: 12px 0 40px rgba(0,0,0,.55);
+    margin-left: 0 !important;                 /* 抽屉用 transform, 屏蔽桌面 margin 动画 */
   }
   .scrim { z-index: 96; }
-  body.side-closed .page-side { display: flex; }   /* 窄屏收起语义由 transform 承担 */
-  body.side-open .page-side { transform: none; }
-  body.side-open .scrim { opacity: 1; pointer-events: auto; }
+  body.side-open .page-side { transform: none; }   /* 抽屉滑入 */
+  /* 手机模式收起态: 开关钮回屏幕左上(修复桌面展开坐标 198px 泄漏) */
+  .sidenav-toggle { top: 12px; left: 12px; }
   body.side-open .sidenav-toggle { top: 12px; left: calc(min(78vw, 280px) - 46px); }   /* 附着抽屉右上角 */
 
   .chat-scroll { padding: var(--sp-4) var(--sp-3); }
