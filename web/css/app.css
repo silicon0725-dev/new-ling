@@ -301,8 +301,6 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
 .starmap-wrap { flex: 1; position: relative; background: #000; }
 #starmap { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
 #starmap:active { cursor: grabbing; }
-.starmap-hud { position: absolute; left: var(--sp-4); top: var(--sp-4); font-size: var(--fs-xs);
-  color: var(--text-3); font-family: ui-monospace, Consolas, monospace; letter-spacing: 0.06em; }
 .node-detail {
   position: absolute; right: var(--sp-4); top: var(--sp-4); width: 260px;
   background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);

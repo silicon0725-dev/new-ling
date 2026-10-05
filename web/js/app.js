@@ -295,7 +295,6 @@ function renderStarmap() {
   if (!state.charId || !Store.char(state.charId)) state.charId = Store.characters[0]?.id ?? null;
   if (!state.starmap) state.starmap = new Starmap($('#starmap'), pickNodeDetail);
   const c = Store.char(state.charId);
-  $('#starmap-hud').textContent = c ? `SOUL.GRAPH — ${c.name} · 特质 ${c.traits.length} · 记忆 ${c.arcs.length}` : 'SOUL.GRAPH — 选择一个角色';
   if (!c) { state.starmap.setData([], []); showNodeDetail(null); return; }
   const nodes = [
     ...c.traits.map(t => ({ id: 't:' + t.name, kind: 'trait', label: t.name, weight: t.weight, state: t.state })),
