@@ -30,13 +30,26 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
 @media (hover: hover) and (pointer: fine) { .iconbtn:hover { color: var(--text); border-color: var(--border-strong); --ring: var(--border-strong); } }
 .iconbtn:active { transform: scale(0.94); }
 
-/* ── 悬浮胶囊（无顶栏：侧栏开关 | 居中导航胶囊 | 右上声音） ── */
+/* ── 悬浮胶囊（无顶栏：侧栏形变开关 | 居中导航胶囊 | 右上声音） ── */
+/* 侧栏开关: 唯一组件, 附着侧栏右上角; 收起后滑到屏幕左上; 图标 panel-left ⇄ x 形变 */
 .sidenav-toggle {
-  position: fixed; top: 12px; left: 12px; z-index: 95;
-  width: 42px; height: 42px; border-radius: 50%;
+  position: fixed; z-index: 99;
+  top: 16px; left: 198px;                        /* 展开态: 侧栏头部右上 */
+  width: 34px; height: 34px; border-radius: var(--radius);
   background: var(--surface); border: 1px solid var(--border);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  transition: top .3s var(--ease), left .3s var(--ease), transform var(--dur-press) var(--ease);
 }
+body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏幕左上 */
+.sidenav-toggle:active { transform: scale(0.94); }
+.morph-ic {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  transition: opacity .24s var(--ease), transform .24s var(--ease);
+}
+.sidenav-toggle[data-mode="collapse"] .ic-panel { opacity: 0; transform: rotate(90deg) scale(.5); }
+.sidenav-toggle[data-mode="collapse"] .ic-x     { opacity: 1; transform: none; }
+.sidenav-toggle[data-mode="expand"]  .ic-x      { opacity: 0; transform: rotate(-90deg) scale(.5); }
+.sidenav-toggle[data-mode="expand"]  .ic-panel  { opacity: 1; transform: none; }
 .nav {
   position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 95;
   display: flex; gap: 2px; padding: 4px;
@@ -73,8 +86,6 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top
 .page { display: none; flex: 1; min-width: 0; min-height: 0; }
 .page.active { display: flex; }
 /* 桌面: 展开时隐藏悬浮开关(侧栏头部自带收起钮), 收起后显示 */
-#sidenav-toggle { display: none; }
-body.side-closed #sidenav-toggle { display: inline-flex; }
 .page-side {
   width: 248px; flex-shrink: 0; border-right: 1px solid var(--border);
   overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
@@ -87,7 +98,6 @@ body.side-closed #sidenav-toggle { display: inline-flex; }
   font-family: Georgia, 'Noto Serif SC', serif; font-size: var(--fs-brand); font-weight: 600;
   letter-spacing: -0.01em; user-select: none;
 }
-.side-close { display: inline-flex; }             /* 桌面: 侧栏头部收起钮 */
 body.side-closed .page-side { display: none; }    /* 桌面收起: 整栏移除, 内容占满 */
 .side-spacer { flex: 1; }
 .side-foot {
@@ -317,7 +327,6 @@ body.side-closed .page-side { display: none; }    /* 桌面收起: 整栏移除,
 
   .app { padding-top: 52px; }
   main { padding-top: 0; }                     /* 让位由 .app 承担, 勿叠加 */
-  #sidenav-toggle { display: inline-flex; }    /* 抽屉开关恢复悬浮显示 */
   .page-side {
     position: fixed; top: 0; bottom: 0; left: 0; width: min(78vw, 280px);
     z-index: 97; background: var(--bg-2);          /* 盖过全部悬浮胶囊 */
@@ -326,10 +335,10 @@ body.side-closed .page-side { display: none; }    /* 桌面收起: 整栏移除,
     box-shadow: 12px 0 40px rgba(0,0,0,.55);
   }
   .scrim { z-index: 96; }
-  .side-close { display: inline-flex; }        /* 抽屉内提供关闭钮（右上 ling 旁） */
   body.side-closed .page-side { display: flex; }   /* 窄屏收起语义由 transform 承担 */
   body.side-open .page-side { transform: none; }
   body.side-open .scrim { opacity: 1; pointer-events: auto; }
+  body.side-open .sidenav-toggle { top: 12px; left: calc(min(78vw, 280px) - 46px); }   /* 附着抽屉右上角 */
 
   .chat-scroll { padding: var(--sp-4) var(--sp-3); }
   .bubble { max-width: 88%; }

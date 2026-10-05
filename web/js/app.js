@@ -461,30 +461,35 @@ function bind() {
   });
 }
 
-/* ── 侧栏开关：圆形钮（ChatGPT 式）。窄屏=抽屉，桌面=收起/展开 ── */
+/* ── 侧栏形变开关（morphicons 式）：唯一按钮附着侧栏右上角,
+   收起后滑到屏幕左上; 图标 panel-left ⇄ x 随状态交叉形变 ── */
 const isNarrow = () => window.matchMedia('(max-width: 760px)').matches;
 function closeDrawer() { document.body.classList.remove('side-open'); }
+function sidebarExpanded() {
+  return isNarrow() ? document.body.classList.contains('side-open')
+                    : !document.body.classList.contains('side-closed');
+}
+function updateToggleMode() {
+  const b = $('#sidenav-toggle');
+  const mode = sidebarExpanded() ? 'collapse' : 'expand';
+  b.dataset.mode = mode;
+  b.setAttribute('aria-label', mode === 'collapse' ? '收起侧边栏' : '展开侧边栏');
+}
 function bindDrawer() {
-  $('#sidenav-toggle').addEventListener('click', () => {
-    if (isNarrow()) {
-      const opening = !document.body.classList.contains('side-open');
-      document.body.classList.toggle('side-open');
-      Sfx.play(opening ? 'open' : 'close');
-    } else {
-      document.body.classList.toggle('side-closed');
-      Sfx.play('select');
-    }
-  });
-  $('#side-close').addEventListener('click', () => {
-    if (isNarrow()) { closeDrawer(); Sfx.play('close'); }
-    else { document.body.classList.add('side-closed'); Sfx.play('close'); }
+  const b = $('#sidenav-toggle');
+  b.innerHTML = `<span class="morph-ic ic-x">${icon('x', 16)}</span>`
+              + `<span class="morph-ic ic-panel">${icon('panel-left', 16)}</span>`;
+  b.addEventListener('click', () => {
+    const wasExpanded = sidebarExpanded();
+    if (isNarrow()) document.body.classList.toggle('side-open');
+    else document.body.classList.toggle('side-closed');
+    updateToggleMode();
+    Sfx.play(wasExpanded ? 'close' : 'open');
   });
   $('#scrim').addEventListener('click', closeDrawer);
-  window.addEventListener('resize', () => {
-    if (isNarrow()) document.body.classList.remove('side-closed');
-    else closeDrawer();
-  });
+  window.addEventListener('resize', () => { closeDrawer(); updateToggleMode(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
+  updateToggleMode();
 }
 
 /* ── 边缘近邻发光（仅电脑精确指针; 移动设备零开销跳过） ──
