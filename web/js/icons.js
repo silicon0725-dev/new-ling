@@ -20,6 +20,7 @@ const ICONS = {
   "moon": `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />`,
   "corner-down-left": `<path d="M20 4v7a4 4 0 0 1-4 4H4" /><path d="m9 10-5 5 5 5" />`,
   "arrow-up": `<path d="M12 19V5" /><path d="m5 12 7-7 7 7" />`,
+  "panel-left": `<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" />`,
 };
 
 /* icon('send-horizontal', 16) → 内联 SVG 字符串 */

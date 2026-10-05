@@ -460,23 +460,26 @@ function bind() {
   });
 }
 
-/* ── 移动端抽屉：点 brand 开合侧栏；遮罩/选中/Escape 关闭 ── */
+/* ── 侧栏开关：圆形钮（ChatGPT 式）。窄屏=抽屉，桌面=收起/展开 ── */
 const isNarrow = () => window.matchMedia('(max-width: 760px)').matches;
 function closeDrawer() { document.body.classList.remove('side-open'); }
 function bindDrawer() {
-  $('.brand').addEventListener('click', () => {
-    if (!isNarrow()) return;
-    const onChat = document.querySelector('.page.active')?.dataset.page === 'chat';
-    if (!onChat) {                                   /* 其他页点 ling = 回对话页并展开 */
-      location.hash = '#/chat';
-      document.body.classList.add('side-open');
-    } else {
+  $('#sidenav-toggle').addEventListener('click', () => {
+    if (isNarrow()) {
+      const opening = !document.body.classList.contains('side-open');
       document.body.classList.toggle('side-open');
+      Sfx.play(opening ? 'open' : 'close');
+    } else {
+      document.body.classList.toggle('side-closed');
+      Sfx.play('select');
     }
-    Sfx.play(document.body.classList.contains('side-open') ? 'open' : 'close');
   });
+  $('#side-close').addEventListener('click', () => { closeDrawer(); Sfx.play('close'); });
   $('#scrim').addEventListener('click', closeDrawer);
-  window.addEventListener('resize', () => { if (!isNarrow()) closeDrawer(); });
+  window.addEventListener('resize', () => {
+    if (isNarrow()) document.body.classList.remove('side-closed');
+    else closeDrawer();
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
 }
 
