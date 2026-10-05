@@ -385,15 +385,15 @@ function bind() {
       Store.removeSession(state.charId, sid);
       if (state.sessionId === sid) state.sessionId = null;
       Sfx.play('delete');
-      renderChat(); return;
+      renderChat(); closeDrawer(); return;
     }
     const item = e.target.closest('[data-sid]');
     /* P0-2：流式中也允许切换——流继续写入其会话，回来时从存储重载 */
-    if (item) { state.sessionId = item.dataset.sid; renderChat(); }
+    if (item) { state.sessionId = item.dataset.sid; renderChat(); closeDrawer(); }
   });
   $('#chat-chars').addEventListener('click', (e) => {
     const item = e.target.closest('[data-cid]');
-    if (item) { state.charId = item.dataset.cid; state.sessionId = null; renderChat(); }
+    if (item) { state.charId = item.dataset.cid; state.sessionId = null; renderChat(); closeDrawer(); }
   });
   $('#messages').addEventListener('click', (e) => {
     const r = e.target.closest('[data-retry]');
@@ -451,5 +451,20 @@ function bind() {
   });
 }
 
+/* ── 移动端抽屉：点 brand 开合侧栏；遮罩/选中/Escape 关闭 ── */
+const isNarrow = () => window.matchMedia('(max-width: 760px)').matches;
+function closeDrawer() { document.body.classList.remove('side-open'); }
+function bindDrawer() {
+  $('.brand').addEventListener('click', () => {
+    if (!isNarrow()) return;
+    document.body.classList.toggle('side-open');
+    Sfx.play(document.body.classList.contains('side-open') ? 'open' : 'close');
+  });
+  $('#scrim').addEventListener('click', closeDrawer);
+  window.addEventListener('resize', () => { if (!isNarrow()) closeDrawer(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
+}
+
 bind();
+bindDrawer();
 route();

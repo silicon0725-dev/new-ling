@@ -6,6 +6,8 @@ body {
   background: var(--bg); color: var(--text); font-size: var(--fs-md);
   overflow: hidden; -webkit-font-smoothing: antialiased;
   display: flex; flex-direction: column;
+  height: 100vh; height: 100dvh;              /* 移动端地址栏安全 */
+  -webkit-tap-highlight-color: transparent;    /* 去点按高亮闪块 */
 }
 ::selection { background: rgba(255,255,255,.85); color: #000; }
 ::-webkit-scrollbar { width: 8px; }
@@ -240,3 +242,37 @@ main { flex: 1; min-height: 0; display: flex; }
 @keyframes pop { from { opacity: 0; transform: scale(0.96); } }   /* 不从 scale(0) 出现 */
 .modal h3 { font-size: var(--fs-lg); margin-bottom: var(--sp-4); }
 .modal .actions { display: flex; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-5); }
+
+/* ── 移动端抽屉遮罩（桌面隐藏） ── */
+.scrim { position: fixed; inset: 52px 0 0 0; background: rgba(0,0,0,.55);
+  opacity: 0; pointer-events: none; z-index: 80;
+  transition: opacity var(--dur-med) var(--ease); }
+
+/* ═══ 窄屏自适应 ≤760px：导航只留图标 + 侧栏抽屉 ═══ */
+@media (max-width: 760px) {
+  .brand { cursor: pointer; }
+  .nav { margin-left: var(--sp-3); gap: 2px; }
+  .nav-item { padding: var(--sp-2); }
+  .nav-label { display: none; }                /* 文字收起，只留图标 */
+
+  .page-side {
+    position: fixed; top: 52px; bottom: 0; left: 0; width: min(78vw, 280px);
+    z-index: 90; background: var(--bg-2);
+    transform: translateX(-105%);              /* 收起 */
+    transition: transform var(--dur-med) var(--ease);
+    box-shadow: 12px 0 40px rgba(0,0,0,.55);
+  }
+  body.side-open .page-side { transform: none; }
+  body.side-open .scrim { opacity: 1; pointer-events: auto; }
+
+  .chat-scroll { padding: var(--sp-4) var(--sp-3); }
+  .bubble { max-width: 88%; }
+  .composer { padding: var(--sp-3); }
+  .char-grid { padding: var(--sp-3); gap: var(--sp-3); grid-template-columns: 1fr 1fr; }
+  .territory, .settings { padding: var(--sp-4) var(--sp-3); }
+  .page-side { padding: var(--sp-3); }
+}
+@media (max-width: 420px) {
+  .char-grid { grid-template-columns: 1fr; }
+  .api-chip { display: none; }                 /* 极窄时让位 */
+}
