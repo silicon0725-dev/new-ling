@@ -40,7 +40,7 @@ svg.ic { flex-shrink: 0; vertical-align: -0.15em; }
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   transition: top .3s var(--ease), left .3s var(--ease), transform var(--dur-press) var(--ease);
 }
-body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏幕左上 */
+body.side-closed .sidenav-toggle { top: 15px; left: 12px; }   /* 收起态: 屏幕左上, 与 nav 带垂直居中 */
 .sidenav-toggle:active { transform: scale(0.94); }
 .morph-ic {
   position: absolute; inset: 0; display: grid; place-items: center;
@@ -73,7 +73,7 @@ body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏�
 .nav-item:hover { color: var(--text); }
 .nav-item.active { color: var(--text); background: var(--surface-strong); box-shadow: var(--glow); }
 .sfx-float {
-  position: fixed; top: 12px; right: 12px; z-index: 95;
+  position: fixed; top: 15px; right: 12px; z-index: 95;
   background: var(--surface); border: 1px solid var(--border);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
@@ -346,8 +346,8 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
   .scrim { z-index: 96; }
   body.side-open .page-side { transform: none; }   /* 抽屉滑入 */
   /* 手机模式收起态: 开关钮回屏幕左上(修复桌面展开坐标 198px 泄漏) */
-  .sidenav-toggle { top: 12px; left: 12px; }
-  body.side-open .sidenav-toggle { top: 12px; left: calc(min(78vw, 280px) - 46px); }   /* 附着抽屉右上角 */
+  .sidenav-toggle { top: 15px; left: 12px; }
+  body.side-open .sidenav-toggle { top: 15px; left: calc(min(78vw, 280px) - 46px); }   /* 附着抽屉右上角, 与抽屉头部居中 */
 
   .chat-scroll { padding: var(--sp-4) var(--sp-3); }
   .bubble { max-width: 88%; }
