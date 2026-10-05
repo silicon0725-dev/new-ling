@@ -1,0 +1,1255 @@
+// 「灵」桌面工作台主界面：深色单色、侧边导航、五页 + 身份占位。
+// 页面内容直接内联在主窗口中（便于统一访问 root 状态），主题与通用控件来自 theme.slint。
+
+import { Theme, SectionTitle, PrimaryBtn, SecondaryBtn, DangerBtn, Card, FieldLabel, NavItem } from "theme.slint";
+import { LineEdit, TextEdit, ListView, ScrollView } from "std-widgets.slint";
+
+// —— 数据结构（Rust 侧通过 slint 生成的同名结构体读写）——
+
+export struct ChatBubble {
+    is-user: bool,      // true = 用户侧气泡
+    content: string,
+    streaming: bool,    // 流式生成中
+    failed: bool,       // 请求失败（内容为错误说明）
+}
+
+export struct SessionItem {
+    id: int,            // -1 表示「新对话」占位
+    title: string,
+    time: string,       // 相对时间（如「3 分钟前」）
+}
+
+export struct CharacterItem {
+    id: int,
+    name: string,
+    title: string,
+    origin: string,
+    faction: string,
+    trait-line: string, // 活跃特质概览（顿号连接）
+}
+
+export struct TimelineItem {
+    id: int,
+    character-name: string,
+    content: string,
+    time: string,
+}
+
+export component App inherits Window {
+    title: "灵 · 角色扮演工作台";
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    min-width: 1120px;
+    min-height: 720px;
+    background: Theme.bg;
+    default-font-family: "Microsoft YaHei";
+
+    // ================= 全局状态 =================
+    in-out property <int> current-page: 0;       // 0 对话 / 1 角色 / 2 领地 / 3 星图 / 4 设置 / 5 身份占位
+    in-out property <bool> api-ready: false;     // 模型 API 是否已配置
+
+    // —— 对话页 ——
+    in-out property <[string]> chat-character-options: [];
+    in-out property <int> chat-character-index: -1;
+    in-out property <string> chat-character-name: "";
+    in-out property <string> chat-character-title: "";
+    in-out property <string> chat-trait-line: "";
+    in-out property <[SessionItem]> chat-sessions: [];
+    in-out property <int> chat-session-index: -1;
+    in-out property <[ChatBubble]> chat-messages: [];
+    in-out property <string> chat-input-text: "";
+    in-out property <bool> chat-busy: false;
+
+    // —— 角色页 ——
+    in-out property <[CharacterItem]> characters: [];
+    in-out property <int> editing-character-id: -1;   // -1 = 新建
+    in-out property <string> editor-name: "";
+    in-out property <string> editor-title: "";
+    in-out property <string> editor-origin: "";
+    in-out property <string> editor-faction: "";
+    in-out property <string> editor-traits: "";       // 每行一条「特质名：描述」
+    in-out property <string> forge-material: "";
+    in-out property <string> forge-preview: "";
+    in-out property <bool> forge-busy: false;
+
+    // —— 领地页 ——
+    in-out property <[CharacterItem]> residents: [];
+    in-out property <[TimelineItem]> timeline: [];
+    in-out property <bool> timeline-busy: false;
+    in-out property <string> world-clock-text: "";
+
+    // —— 星图页 ——
+    in-out property <image> starmap-frame;
+    in-out property <bool> starmap-running: false;
+    in-out property <string> starmap-status: "正在初始化星图……";
+    in-out property <[string]> starmap-character-options: [];
+    in-out property <int> starmap-character-index: -1;
+    in-out property <string> starmap-detail-title: "未选中星点";
+    in-out property <string> starmap-detail-body: "点击星图中的星点，可在此查看对应的角色 / 特质 / 记忆详情。";
+
+    // —— 设置页 ——
+    in-out property <string> settings-base-url: "";
+    in-out property <string> settings-api-key: "";
+    in-out property <string> settings-model: "";
+    in-out property <bool> conn-testing: false;
+    in-out property <string> conn-result: "";
+    in-out property <string> data-dir-text: "";
+    in-out property <string> export-path-text: "";
+    in-out property <string> import-path-text: "";
+
+    // —— 全局弹层 ——
+    in-out property <string> toast-text: "";
+    in-out property <bool> confirm-visible: false;
+    in-out property <string> confirm-text: "";
+
+    // ================= 回调（Rust 侧装配） =================
+    callback send-message(string);
+    callback select-chat-character(int);
+    callback select-session(int);
+    callback new-session();
+    callback save-character();
+    callback edit-character(int);
+    callback delete-character(int);
+    callback new-character();
+    callback start-forge();
+    callback confirm-forge();
+    callback generate-timeline();
+    callback starmap-select-character(int);
+    callback starmap-reload();
+    callback starmap-clicked(float, float, float, float); // 视口宽、高、点击 x、y
+    callback save-settings();
+    callback test-connection();
+    callback export-data();
+    callback import-data(string);
+    callback clear-data();
+    callback confirm-accept();
+    callback confirm-cancel();
+    callback goto-settings();
+
+    // ================= 整体布局 =================
+    HorizontalLayout {
+        // ———— 侧边栏 ————
+        Rectangle {
+            width: 212px;
+            background: Theme.rail;
+            border-width: 1px;
+            border-color: Theme.hairline;
+
+            VerticalLayout {
+                padding: 18px;
+                spacing: 6px;
+
+                // 品牌区：一点白色星芒
+                HorizontalLayout {
+                    spacing: 10px;
+                    padding-bottom: 18px;
+                    padding-top: 4px;
+                    Rectangle {
+                        width: 34px; height: 34px;
+                        border-radius: 17px;
+                        background: #15171B;
+                        border-width: 1px;
+                        border-color: #2E3138;
+                        drop-shadow-blur: 22px;
+                        drop-shadow-color: #33FFFFFF;
+                        Text {
+                            text: "灵";
+                            color: Theme.accent;
+                            font-size: 16px;
+                            font-weight: 800;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 1px;
+                        Text {
+                            text: "灵";
+                            color: Theme.text;
+                            font-size: 16px;
+                            font-weight: 800;
+                        }
+                        Text {
+                            text: "角色扮演工作台";
+                            color: Theme.text-3;
+                            font-size: 11px;
+                        }
+                    }
+                }
+
+                NavItem {
+                    glyph: "●"; label: "对话";
+                    active: root.current-page == 0;
+                    activate => { root.current-page = 0; }
+                }
+                NavItem {
+                    glyph: "◆"; label: "角色";
+                    active: root.current-page == 1;
+                    activate => { root.current-page = 1; }
+                }
+                NavItem {
+                    glyph: "▲"; label: "领地";
+                    active: root.current-page == 2;
+                    activate => { root.current-page = 2; }
+                }
+                NavItem {
+                    glyph: "★"; label: "星图";
+                    active: root.current-page == 3;
+                    activate => { root.current-page = 3; }
+                }
+                NavItem {
+                    glyph: "◇"; label: "设置";
+                    active: root.current-page == 4;
+                    activate => { root.current-page = 4; }
+                }
+                NavItem {
+                    glyph: "◑"; label: "身份"; badge: "规划中";
+                    active: root.current-page == 5;
+                    activate => { root.current-page = 5; }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                // 底部：数据目录与版本
+                Text {
+                    text: "数据 · " + root.data-dir-text;
+                    color: Theme.text-3;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+                Text {
+                    text: "v0.1.0 · 本地优先";
+                    color: #4A4E55;
+                    font-size: 10px;
+                }
+            }
+        }
+
+        // ———— 页面区 ————
+        Rectangle {
+            background: Theme.bg;
+
+            // =========================================================
+            // 第 0 页：对话
+            // =========================================================
+            if root.current-page == 0 : HorizontalLayout {
+                // 左栏：角色 + 会话
+                Rectangle {
+                    width: 252px;
+                    background: Theme.rail;
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 8px;
+                        SectionTitle { text: "角色"; }
+                        if root.chat-character-options.length > 0 : ListView {
+                            vertical-stretch: 5;
+                            for name[i] in root.chat-character-options: Rectangle {
+                                height: 38px;
+                                border-radius: Theme.radius;
+                                background: i == root.chat-character-index ? #1C1F25 : (ta-char.has-hover ? #14161A : transparent);
+                                border-width: i == root.chat-character-index ? 1px : 0px;
+                                border-color: #2F333A;
+                                ta-char := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.select-chat-character(i); }
+                                }
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 8px;
+                                    Text {
+                                        text: name;
+                                        color: i == root.chat-character-index ? Theme.accent : Theme.text-2;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+                        if root.chat-character-options.length == 0: Text {
+                            text: "还没有角色。\n请前往「角色」页创建或铸造。";
+                            color: Theme.text-3;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                        Rectangle { height: 1px; background: Theme.hairline; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            SectionTitle { text: "会话"; vertical-alignment: center; }
+                            Rectangle { horizontal-stretch: 1; }
+                            SecondaryBtn {
+                                text: "新对话";
+                                height: 26px;
+                                min-width: 60px;
+                                clicked => { root.new-session(); }
+                            }
+                        }
+                        if root.chat-sessions.length > 0 : ListView {
+                            vertical-stretch: 6;
+                            for s[i] in root.chat-sessions: Rectangle {
+                                height: 40px;
+                                border-radius: Theme.radius;
+                                background: i == root.chat-session-index ? #1C1F25 : (ta-sess.has-hover ? #14161A : transparent);
+                                border-width: i == root.chat-session-index ? 1px : 0px;
+                                border-color: #2F333A;
+                                ta-sess := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.select-session(i); }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    padding-left: 12px;
+                                    padding-right: 8px;
+                                    spacing: 1px;
+                                    Text {
+                                        text: s.title;
+                                        color: i == root.chat-session-index ? Theme.text : Theme.text-2;
+                                        font-size: 12px;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: s.time;
+                                        color: Theme.text-3;
+                                        font-size: 10px;
+                                    }
+                                }
+                            }
+                        }
+                        if root.chat-sessions.length == 0: Text {
+                            text: "选择角色后，这里会出现会话列表。";
+                            color: Theme.text-3;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                // 主区：消息与输入
+                VerticalLayout {
+                    // 顶栏：当前角色
+                    Rectangle {
+                        height: 58px;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.hairline;
+                        HorizontalLayout {
+                            padding-left: 20px;
+                            padding-right: 20px;
+                            spacing: 10px;
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 2px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: root.chat-character-name != "" ? root.chat-character-name : "未选择角色";
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: root.chat-character-title;
+                                        color: Theme.text-3;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    text: root.chat-trait-line != "" ? "特质 · " + root.chat-trait-line : "对话时自动注入角色卡、活跃特质与记忆";
+                                    color: Theme.text-3;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+                    }
+                    // API 未配置引导条
+                    if !root.api-ready : Rectangle {
+                        height: 44px;
+                        background: #14161B;
+                        border-width: 1px;
+                        border-color: #2C2F36;
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: 14px;
+                            spacing: 10px;
+                            alignment: center;
+                            Text {
+                                text: "尚未配置模型 API，暂时无法对话。";
+                                color: Theme.text-2;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            SecondaryBtn {
+                                text: "前往设置";
+                                height: 28px;
+                                clicked => { root.goto-settings(); }
+                            }
+                        }
+                    }
+
+                    // 消息列表
+                    if root.chat-character-index >= 0 : Rectangle {
+                        vertical-stretch: 1;
+                        ListView {
+                            vertical-stretch: 1;
+                            for m in root.chat-messages: VerticalLayout {
+                                padding: 3px;
+                                padding-left: 18px;
+                                padding-right: 18px;
+                                HorizontalLayout {
+                                    alignment: m.is-user ? end : start;
+                                    bub := Rectangle {
+                                        width: Math.min(parent.width - 72px, txt.preferred-width + 36px);
+                                        height: Math.max(blay.preferred-height, 42px);
+                                        border-radius: 12px;
+                                        background: m.is-user ? #1B1E24 : (m.failed ? #241B1C : #121419);
+                                        border-width: 1px;
+                                        border-color: m.failed ? #4A3234 : (m.is-user ? #2B2F36 : #22252B);
+                                        drop-shadow-blur: m.is-user ? 0px : 20px;
+                                        drop-shadow-color: #0FFFFFFF;
+                                        blay := VerticalLayout {
+                                            padding: 11px;
+                                            spacing: 4px;
+                                            txt := Text {
+                                                text: m.content;
+                                                color: m.is-user ? Theme.text : (m.failed ? #DC9A9D : #DDE0E4);
+                                                font-size: 13px;
+                                                wrap: word-wrap;
+                                            }
+                                            if m.streaming : Text {
+                                                text: "··· 生成中";
+                                                color: Theme.text-3;
+                                                font-size: 10px;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if root.chat-character-index < 0 : Rectangle {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 10px;
+                            Text {
+                                text: "从左侧选择一位角色";
+                                color: Theme.text;
+                                font-size: 18px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: "对话将自动注入角色卡、活跃特质与召回的记忆。";
+                                color: Theme.text-3;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+
+                    // 输入区
+                    Rectangle {
+                        height: 108px;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.hairline;
+                        HorizontalLayout {
+                            padding: 14px;
+                            spacing: 12px;
+                            TextEdit {
+                                vertical-stretch: 1;
+                                text <=> root.chat-input-text;
+                                wrap: word-wrap;
+                                enabled: root.chat-character-index >= 0 && !root.chat-busy;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                width: 88px;
+                                PrimaryBtn {
+                                    text: root.chat-busy ? "生成中" : "发送";
+                                    enabled: root.chat-character-index >= 0 && !root.chat-busy && root.chat-input-text != "";
+                                    clicked => { root.send-message(root.chat-input-text); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================
+            // 第 1 页：角色（列表 / 编辑 / 铸造）
+            // =========================================================
+            if root.current-page == 1 : HorizontalLayout {
+                // 左：角色卡列表
+                VerticalLayout {
+                    width: 320px;
+                    padding: 16px;
+                    spacing: 10px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        SectionTitle { text: "角色档案"; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; }
+                        SecondaryBtn {
+                            text: "新建角色";
+                            height: 26px;
+                            clicked => { root.new-character(); }
+                        }
+                    }
+                    if root.characters.length > 0 : ListView {
+                        vertical-stretch: 1;
+                        for c in root.characters: Card {
+                            height: 104px;
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 5px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: c.name;
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: c.title;
+                                        color: Theme.text-3;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
+                                Text {
+                                    text: (c.origin != "" ? c.origin : "出身未述") + (c.faction != "" ? " · " + c.faction : "");
+                                    color: Theme.text-2;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: c.trait-line != "" ? c.trait-line : "暂无活跃特质";
+                                    color: Theme.text-3;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    padding-top: 4px;
+                                    SecondaryBtn {
+                                        text: "编辑";
+                                        height: 24px;
+                                        min-width: 52px;
+                                        clicked => { root.edit-character(c.id); }
+                                    }
+                                    DangerBtn {
+                                        text: "删除";
+                                        height: 24px;
+                                        min-width: 52px;
+                                        clicked => { root.delete-character(c.id); }
+                                    }
+                                }
+                            }
+                        }
+                        }
+                        if root.characters.length == 0: Text {
+                            text: "还没有角色。\n可在右侧手工创建，或粘贴素材「铸造」。";
+                            color: Theme.text-3;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-alignment: center;
+                        }
+                    }
+                Rectangle { width: 1px; background: Theme.hairline; vertical-stretch: 1; }
+
+                // 右：编辑器 + 铸造
+                VerticalLayout {
+                    vertical-stretch: 1;
+                    padding: 20px;
+                    spacing: 14px;
+
+                    // —— 编辑器 ——
+                    Card {
+                        vertical-stretch: 4;
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 10px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                SectionTitle {
+                                    text: root.editing-character-id >= 0 ? "编辑角色（#" + root.editing-character-id + "）" : "新建角色";
+                                    vertical-alignment: center;
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    FieldLabel { text: "姓名"; }
+                                    LineEdit {
+                                        text <=> root.editor-name;
+                                        placeholder-text: "如：玄铃";
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    FieldLabel { text: "称号"; }
+                                    LineEdit {
+                                        text <=> root.editor-title;
+                                        placeholder-text: "如：守夜人";
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    FieldLabel { text: "出身"; }
+                                    LineEdit {
+                                        text <=> root.editor-origin;
+                                        placeholder-text: "如：北境雪原";
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    FieldLabel { text: "阵营"; }
+                                    LineEdit {
+                                        text <=> root.editor-faction;
+                                        placeholder-text: "如：霜环";
+                                    }
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                vertical-stretch: 1;
+                                FieldLabel { text: "特质（每行一条，格式：特质名：描述）"; }
+                                TextEdit {
+                                    vertical-stretch: 1;
+                                    text <=> root.editor-traits;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: end;
+                                SecondaryBtn {
+                                    text: "清空";
+                                    clicked => { root.new-character(); }
+                                }
+                                PrimaryBtn {
+                                    text: "保存角色";
+                                    enabled: root.editor-name != "";
+                                    clicked => { root.save-character(); }
+                                }
+                            }
+                        }
+                    }
+
+                    // —— 铸造 ——
+                    Card {
+                        vertical-stretch: 3;
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 10px;
+                            Text {
+                                text: "铸造 · 从素材生成角色卡";
+                                color: Theme.text;
+                                font-size: 14px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: "粘贴角色设定素材，调用模型提炼结构化角色卡（姓名 / 称号 / 出身 / 阵营 / 特质）。";
+                                color: Theme.text-3;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                            TextEdit {
+                                vertical-stretch: 1;
+                                text <=> root.forge-material;
+                                wrap: word-wrap;
+                            }
+                            if root.forge-preview != "" : Rectangle {
+                                height: 96px;
+                                border-radius: Theme.radius;
+                                background: #0D0F12;
+                                border-width: 1px;
+                                border-color: #2C2F36;
+                                ScrollView {
+                                    VerticalLayout {
+                                        padding: 10px;
+                                        Text {
+                                            text: root.forge-preview;
+                                            color: Theme.text-2;
+                                            font-size: 12px;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: end;
+                                PrimaryBtn {
+                                    text: root.forge-busy ? "铸造中……" : "调用模型铸造";
+                                    enabled: !root.forge-busy && root.forge-material != "";
+                                    clicked => { root.start-forge(); }
+                                }
+                                SecondaryBtn {
+                                    text: "确认入库";
+                                    enabled: root.forge-preview != "";
+                                    clicked => { root.confirm-forge(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================
+            // 第 2 页：领地（入住角色 + 近况时间线）
+            // =========================================================
+            if root.current-page == 2 : VerticalLayout {
+                padding: 18px;
+                spacing: 14px;
+
+                // 顶栏：世界时钟 + 操作
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text {
+                            text: "领地 · 近况";
+                            color: Theme.text;
+                            font-size: 16px;
+                            font-weight: 800;
+                        }
+                        Text {
+                            text: root.world-clock-text != "" ? root.world-clock-text : "世界时钟启动中";
+                            color: Theme.text-3;
+                            font-size: 11px;
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    PrimaryBtn {
+                        text: root.timeline-busy ? "生成中……" : "生成近况";
+                        enabled: !root.timeline-busy && root.api-ready && root.residents.length > 0;
+                        clicked => { root.generate-timeline(); }
+                    }
+                }
+                if !root.api-ready : Text {
+                    text: "尚未配置模型 API：配置后即可为入住角色生成生活近况。";
+                    color: Theme.text-3;
+                    font-size: 12px;
+                }
+
+                // 入住角色卡
+                Flickable {
+                    height: 128px;
+                    content-width: resident-row.preferred-width;
+                    resident-row := HorizontalLayout {
+                        alignment: start;
+                        spacing: 12px;
+                        for c in root.residents: Card {
+                                width: 218px;
+                                VerticalLayout {
+                                    padding: 14px;
+                                    spacing: 4px;
+                                    alignment: start;
+                                    Text {
+                                        text: c.name;
+                                        color: Theme.text;
+                                        font-size: 14px;
+                                        font-weight: 700;
+                                    }
+                                    Text {
+                                        text: c.title != "" ? c.title : "无称号";
+                                        color: Theme.text-3;
+                                        font-size: 11px;
+                                    }
+                                    Rectangle { height: 8px; }
+                                    Text {
+                                        text: c.trait-line != "" ? c.trait-line : "暂无活跃特质";
+                                        color: Theme.text-2;
+                                        font-size: 11px;
+                                        wrap: word-wrap;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+                    if root.residents.length == 0: Text {
+                        text: "领地尚无入住角色：在「角色」页建档后自动入住。";
+                        color: Theme.text-3;
+                        font-size: 12px;
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.hairline; }
+
+                // 近况时间线
+                SectionTitle { text: "近况时间线"; }
+                if root.timeline.length > 0 : ListView {
+                    vertical-stretch: 1;
+                    for t in root.timeline: HorizontalLayout {
+                        padding: 8px;
+                        padding-left: 4px;
+                        spacing: 12px;
+                        // 时间点：白色小星，弱光晕
+                        Rectangle {
+                            width: 30px;
+                            y: 6px;
+                            height: 30px;
+                            border-radius: 15px;
+                            background: #14161B;
+                            border-width: 1px;
+                            border-color: #2E3138;
+                            drop-shadow-blur: 14px;
+                            drop-shadow-color: #26FFFFFF;
+                            Text {
+                                text: "·";
+                                color: Theme.accent;
+                                font-size: 16px;
+                                font-weight: 800;
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 3px;
+                            padding-top: 4px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: t.character-name;
+                                    color: Theme.text;
+                                    font-size: 12px;
+                                    font-weight: 700;
+                                }
+                                Text {
+                                    text: t.time;
+                                    color: Theme.text-3;
+                                    font-size: 10px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Text {
+                                text: t.content;
+                                color: Theme.text-2;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+                if root.timeline.length == 0 : Rectangle {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "还没有近况记录";
+                            color: Theme.text-3;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "点击右上「生成近况」，模型将依据人设与最近记忆撰写生活记录。";
+                            color: #4A4E55;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // =========================================================
+            // 第 3 页：星图（ling-render 离屏帧 + 节点详情）
+            // =========================================================
+            if root.current-page == 3 : HorizontalLayout {
+                // 星图视口
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Theme.bg-deep;
+                    border-width: 1px;
+                    border-color: Theme.hairline;
+                    Image {
+                        x: 0; y: 0;
+                        width: 100%;
+                        height: 100%;
+                        source: root.starmap-frame;
+                        image-fit: ImageFit.contain;
+                    }
+                    // 点击拾取（覆盖全视口；把视口尺寸与点击坐标一并交给 Rust）
+                    sm-touch := TouchArea {
+                        clicked => {
+                            root.starmap-clicked(self.width / 1px, self.height / 1px,
+                                                 self.pressed-x / 1px, self.pressed-y / 1px);
+                        }
+                    }
+                    // 状态遮罩（未就绪 / 失败）
+                    if !root.starmap-running : Rectangle {
+                        background: #060708D9;
+                        Text {
+                            text: root.starmap-status;
+                            color: Theme.text-2;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+                    Text {
+                        x: 14px;
+                        y: 12px;
+                        text: "星图 · 点击星点查看详情";
+                        color: #555A62;
+                        font-size: 11px;
+                    }
+                }
+
+                // 右栏：角色选择 / 详情 / 图例
+                VerticalLayout {
+                    width: 292px;
+                    padding: 16px;
+                    spacing: 12px;
+                    SectionTitle { text: "星图角色"; }
+                    if root.starmap-character-options.length > 0 : ListView {
+                        vertical-stretch: 3;
+                        for name[i] in root.starmap-character-options: Rectangle {
+                            height: 36px;
+                            border-radius: Theme.radius;
+                            background: i == root.starmap-character-index ? #1C1F25 : (ta-smchar.has-hover ? #14161A : transparent);
+                            border-width: i == root.starmap-character-index ? 1px : 0px;
+                            border-color: #2F333A;
+                            ta-smchar := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.starmap-select-character(i); }
+                            }
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                Text {
+                                    text: name;
+                                    color: i == root.starmap-character-index ? Theme.accent : Theme.text-2;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    if root.starmap-character-options.length == 0: Text {
+                        text: "尚无角色可装载。";
+                        color: Theme.text-3;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    SecondaryBtn {
+                        text: "重新装载星图";
+                        clicked => { root.starmap-reload(); }
+                    }
+                    Rectangle { height: 1px; background: Theme.hairline; }
+                    SectionTitle { text: "星点详情"; }
+                    Card {
+                        vertical-stretch: 4;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 8px;
+                            Text {
+                                text: root.starmap-detail-title;
+                                color: Theme.text;
+                                font-size: 13px;
+                                font-weight: 700;
+                                wrap: word-wrap;
+                            }
+                            Rectangle { height: 1px; background: Theme.hairline; }
+                            Text {
+                                text: root.starmap-detail-body;
+                                color: Theme.text-2;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                                vertical-stretch: 1;
+                            }
+                        }
+                    }
+                    Text {
+                        text: "图例：最大最亮为核心（角色），暖白为特质，冷白为弧光，青白小点为事件记忆；连线为归属与因果。";
+                        color: #4A4E55;
+                        font-size: 10px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            // =========================================================
+            // 第 4 页：设置
+            // =========================================================
+            if root.current-page == 4 : VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+                alignment: start;
+
+                Text {
+                    text: "设置";
+                    color: Theme.text;
+                    font-size: 16px;
+                    font-weight: 800;
+                }
+
+                // —— 模型接入 ——
+                Card {
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 10px;
+                        Text {
+                            text: "模型接入（OpenAI 兼容）";
+                            color: Theme.text;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "仅接受 http/https 且可公网访问的地址；凭据只保存在本机数据目录，不随仓库分发。";
+                            color: Theme.text-3;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 2;
+                                FieldLabel { text: "接口地址（baseURL）"; }
+                                LineEdit {
+                                    text <=> root.settings-base-url;
+                                    placeholder-text: "https://your-gateway.example/v1";
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                FieldLabel { text: "模型"; }
+                                LineEdit {
+                                    text <=> root.settings-model;
+                                    placeholder-text: "模型名称";
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            FieldLabel { text: "API Key"; }
+                            LineEdit {
+                                text <=> root.settings-api-key;
+                                placeholder-text: "留空表示匿名网关";
+                                input-type: InputType.password;
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: end;
+                            SecondaryBtn {
+                                text: root.conn-testing ? "测试中……" : "测试连通性";
+                                enabled: !root.conn-testing;
+                                clicked => { root.test-connection(); }
+                            }
+                            PrimaryBtn {
+                                text: "保存配置";
+                                clicked => { root.save-settings(); }
+                            }
+                        }
+                        if root.conn-result != "" : Text {
+                            text: root.conn-result;
+                            color: Theme.text-2;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                // —— 数据 ——
+                Card {
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 10px;
+                        Text {
+                            text: "数据";
+                            color: Theme.text;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "数据目录：" + root.data-dir-text;
+                            color: Theme.text-3;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            SecondaryBtn {
+                                text: "导出全量 JSON";
+                                clicked => { root.export-data(); }
+                            }
+                            SecondaryBtn {
+                                text: "导入（替换现有数据）";
+                                enabled: root.import-path-text != "";
+                                clicked => { root.import-data(root.import-path-text); }
+                            }
+                        }
+                        if root.export-path-text != "" : Text {
+                            text: "最近导出：" + root.export-path-text;
+                            color: Theme.text-2;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                        LineEdit {
+                            text <=> root.import-path-text;
+                            placeholder-text: "粘贴导出文件路径以导入（将替换现有全部数据）";
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            DangerBtn {
+                                text: "清空全部数据";
+                                clicked => { root.clear-data(); }
+                            }
+                            Text {
+                                text: "清空会删除所有角色、会话、记忆与近况；模型配置保留。";
+                                color: Theme.text-3;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                // —— 关于 ——
+                Card {
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 6px;
+                        Text {
+                            text: "关于「灵」";
+                            color: Theme.text;
+                            font-size: 13px;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: "v0.1.0 · 数据保存在本地 SQLite，AI 能力由你配置的模型网关提供。多身份系统仍在规划中（见侧栏「身份」）。";
+                            color: Theme.text-3;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+            }
+
+            // =========================================================
+            // 第 5 页：身份（占位入口）
+            // =========================================================
+            if root.current-page == 5 : VerticalLayout {
+                alignment: center;
+                spacing: 12px;
+                Rectangle {
+                    height: 56px;
+                    border-radius: 28px;
+                    background: #14161B;
+                    border-width: 1px;
+                    border-color: #2E3138;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #26FFFFFF;
+                    HorizontalLayout {
+                        alignment: center;
+                        Text {
+                            text: "◑";
+                            color: Theme.accent;
+                            font-size: 22px;
+                        }
+                    }
+                }
+                Text {
+                    text: "多身份系统 · 规划中";
+                    color: Theme.text;
+                    font-size: 17px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "未来将支持一位角色拥有多重身份，以及身份间的切换与记忆隔离。\n当前版本仅保留此占位入口。";
+                    color: Theme.text-3;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    // ================= 全局 Toast =================
+    if root.toast-text != "" : Rectangle {
+        y: parent.height - 70px;
+        x: (parent.width - self.width) / 2;
+        height: 38px;
+        width: Math.min(parent.width - 80px, toast-txt.preferred-width + 44px);
+        border-radius: 19px;
+        background: #E9EBEEF2;
+        drop-shadow-blur: 30px;
+        drop-shadow-color: #22000000;
+        toast-txt := Text {
+            text: root.toast-text;
+            color: #101216;
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // ================= 全局确认对话框 =================
+    if root.confirm-visible : Rectangle {
+        background: #000000C0;
+        TouchArea { }   // 吞掉遮罩点击
+        Rectangle {
+            width: 420px;
+            height: 188px;
+            border-radius: Theme.radius-lg;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: #2C2F36;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #33000000;
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+                Text {
+                    text: "请确认操作";
+                    color: Theme.text;
+                    font-size: 14px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: root.confirm-text;
+                    color: Theme.text-2;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                    vertical-stretch: 1;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    SecondaryBtn {
+                        text: "取消";
+                        clicked => { root.confirm-cancel(); }
+                    }
+                    DangerBtn {
+                        text: "确认执行";
+                        clicked => { root.confirm-accept(); }
+                    }
+                }
+            }
+        }
+    }
+}

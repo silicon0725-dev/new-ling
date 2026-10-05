@@ -481,6 +481,34 @@ impl Store {
         })?;
         rows.collect()
     }
+
+    // —— 角色档案更新 / 特质删除（应用层编辑器所需的纯新增方法）——
+
+    /// 更新角色身份档案（姓名 / 称号 / 出身 / 阵营），返回是否更新了行。
+    /// SQL 为静态语句，所有字段一律参数绑定。
+    pub fn update_character(
+        &self,
+        id: i64,
+        name: &str,
+        title: &str,
+        origin: &str,
+        faction: &str,
+    ) -> rusqlite::Result<bool> {
+        let affected = self.conn.execute(
+            "UPDATE characters SET name = ?2, title = ?3, origin = ?4, faction = ?5 WHERE id = ?1",
+            params![id, name, title, origin, faction],
+        )?;
+        Ok(affected > 0)
+    }
+
+    /// 删除角色的一个特质，返回是否删除了行。
+    pub fn delete_trait(&self, character_id: i64, name: &str) -> rusqlite::Result<bool> {
+        let affected = self.conn.execute(
+            "DELETE FROM traits WHERE character_id = ?1 AND name = ?2",
+            params![character_id, name],
+        )?;
+        Ok(affected > 0)
+    }
 }
 
 #[cfg(test)]
