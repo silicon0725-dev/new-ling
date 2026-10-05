@@ -489,7 +489,8 @@ function bindDrawer() {
    JS 只算几何并写 --gx/--gy/--glow-o 三个变量, 视觉全部在 CSS ::after。 ── */
 const EdgeGlow = (() => {
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
-  const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom';
+  const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom, '
+    + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item';
   const REACH = 90;                 // 感应半径(px), 距边缘 90px 内开始渐亮
   let targets = [], raf = 0, mx = -1e4, my = -1e4;
 

@@ -347,7 +347,7 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   border-radius: inherit;
   padding: 1.5px;
   background: radial-gradient(150px 110px at var(--gx, 50%) var(--gy, 50%),
-              rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.12) 55%, transparent 75%);
+              rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.22) 55%, transparent 75%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
           mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -367,7 +367,8 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   .btn, .input, .textarea, .card, .iconbtn, .send-fab, .composer-shell,
   .modal, .banner, .toast, .bubble, .trait, .session-item,
   .node-detail, .resident, .float-bottom, .api-chip,
-  .side-foot .nav-item {
+  .side-foot .nav-item,
+  .glow-edge::after {
     corner-shape: superellipse(2.4);
   }
   .btn, .input, .textarea, .card, .iconbtn, .composer-shell,
