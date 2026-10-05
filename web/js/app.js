@@ -43,6 +43,7 @@ function route() {
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
   if (booted) Sfx.play('select');
   ({ chat: renderChat, characters: renderChars, territory: renderTerritory, starmap: renderStarmap, settings: renderSettings })[page]();
+  EdgeGlow.collect();                 /* 页面重渲染后重新收集发光目标 */
   booted = true;
 }
 window.addEventListener('hashchange', route);
@@ -482,6 +483,43 @@ function bindDrawer() {
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
 }
+
+/* ── 边缘近邻发光（仅电脑精确指针; 移动设备零开销跳过） ──
+   光标靠近组件边缘 → 最近点处的边缘环带发亮(参考 Windows 图标近邻光带)。
+   JS 只算几何并写 --gx/--gy/--glow-o 三个变量, 视觉全部在 CSS ::after。 ── */
+const EdgeGlow = (() => {
+  const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
+  const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom';
+  const REACH = 90;                 // 感应半径(px), 距边缘 90px 内开始渐亮
+  let targets = [], raf = 0, mx = -1e4, my = -1e4;
+
+  function collect() {
+    targets = fine.matches ? [...document.querySelectorAll(SELECTOR)] : [];
+    targets.forEach(el => el.classList.add('glow-edge'));
+  }
+  function update() {
+    raf = 0;
+    for (const el of targets) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) continue;
+      const nx = Math.max(r.left, Math.min(mx, r.right));   // 光标在矩形上的最近点
+      const ny = Math.max(r.top, Math.min(my, r.bottom));
+      const d = Math.hypot(mx - nx, my - ny);
+      el.style.setProperty('--gx', (nx - r.left).toFixed(1) + 'px');
+      el.style.setProperty('--gy', (ny - r.top).toFixed(1) + 'px');
+      el.style.setProperty('--glow-o', Math.max(0, 1 - d / REACH).toFixed(3));
+    }
+  }
+  function onMove(e) {
+    mx = e.clientX; my = e.clientY;
+    if (!raf && targets.length) raf = requestAnimationFrame(update);
+  }
+  fine.addEventListener('change', collect);
+  window.addEventListener('resize', collect);
+  document.addEventListener('pointermove', onMove, { passive: true });
+  collect();
+  return { collect };
+})();
 
 bind();
 bindDrawer();

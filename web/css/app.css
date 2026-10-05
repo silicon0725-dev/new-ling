@@ -337,6 +337,27 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   .char-grid { grid-template-columns: 1fr; }
 }
 
+/* ── 边缘近邻发光（仅精确指针设备, EdgeGlow 驱动 CSS 变量） ──
+   光标靠近组件边缘时, 最近点处的边缘环带被照亮(参考 Windows 图标近邻光带)。
+   ::after 只保留 1.5px 边缘环(mask xor), 环色为径向光斑, 中心跟随光标最近点。 ── */
+.glow-edge { position: relative; }
+.glow-edge::after {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: radial-gradient(150px 110px at var(--gx, 50%) var(--gy, 50%),
+              rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.12) 55%, transparent 75%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  opacity: var(--glow-o, 0);
+  transition: opacity 140ms var(--ease);
+  pointer-events: none;
+}
+.glow-edge:focus-within::after, .glow-edge:hover::after { opacity: max(var(--glow-o, 0), 0.55); }
+
 
 /* ── 多曲率圆角（squircle 超椭圆）+ 描边环 ──
    原理: corner-shape 下 border 描边沿旧轮廓绘制, 角部发虚(即「stroke≠offset curve」问题)。
