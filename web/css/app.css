@@ -337,12 +337,10 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
   .char-grid { grid-template-columns: 1fr; }
 }
 
-/* ── 多曲率圆角（squircle 超椭圆）：支持的 Chromium 渐进增强, 其余回退普通圆角 ── */
+/* ── 多曲率圆角（squircle 超椭圆）：仅用于大面积元件 —— 小尺寸 1px 描边控件
+   在 corner-shape 下角部描边会发虚(Chromium 细分瑕疵), 故回退普通圆角 ── */
 @supports (corner-shape: superellipse(2)) {
-  .btn, .input, .textarea, .card, .iconbtn, .send-fab, .composer-shell,
-  .modal, .banner, .toast, .bubble, .trait, .session-item,
-  .node-detail, .resident, .float-bottom, .api-chip,
-  .side-foot .nav-item {
+  .card, .composer-shell, .modal, .bubble, .banner, .toast, .node-detail {
     corner-shape: superellipse(2.4);
   }
 }
