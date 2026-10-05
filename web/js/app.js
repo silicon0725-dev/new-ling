@@ -487,18 +487,14 @@ function bindDrawer() {
     Sfx.play(wasExpanded ? 'close' : 'open');
   });
   $('#scrim').addEventListener('click', closeDrawer);
-  /* 跨断点(横竖屏切换): 侧栏开合状态保持 + 无缝变身。
-     fixed⇄流内无法直接插值, 三步消化: 1) no-anim 瞬切状态; 2) main margin 补偿
-     从旧宽平滑到新宽(挤开/回位动画); 3) 侧栏浮起/落下入场。 同断点内 resize 保持现状。 */
+  /* 跨断点(横竖屏切换): 侧栏开合状态保持 + 无缝形变。
+     侧栏永久 fixed, 桌面⇄手机只是宽度/背景/阴影/main 让位的属性差异, 全部由 CSS 过渡
+     完成动画(浮起=变宽变浅阴影显 / 落下=反向); JS 只做状态类映射, 无需任何补帧 hack。 */
   let wasNarrow = isNarrow();
   window.addEventListener('resize', () => {
     const nowNarrow = isNarrow();
     if (nowNarrow !== wasNarrow) {
       wasNarrow = nowNarrow;
-      const main = document.querySelector('main');
-      const side = document.getElementById('sidebar');
-      const w0 = Math.round(main.getBoundingClientRect().width);   // 旧宽(迁移前)
-      document.body.classList.add('no-anim');
       if (nowNarrow) {          /* 桌面→手机: 侧栏展开则抽屉保持打开 */
         document.body.toggle('side-open', !document.body.classList.contains('side-closed'));
         document.body.classList.remove('side-closed');
@@ -507,34 +503,7 @@ function bindDrawer() {
         document.body.classList.remove('side-open');
         document.body.classList.toggle('side-closed', !open);
       }
-      const w1 = Math.round(main.getBoundingClientRect().width);   // 新宽(迁移后)
-      const delta = w1 - w0;
-      const needsComp = Math.abs(delta) > 8;
-      if (needsComp) {
-        if (delta > 0) main.style.marginRight = delta + 'px';      // 变宽: 先保持旧宽
-        else main.style.marginLeft = delta + 'px';                 // 变窄: 先扩回旧宽
-      }
-      const cleanup = () => {                                       // 清理(幂等, 可安全重入)
-        document.body.classList.remove('no-anim');
-        side.classList.remove('side-anim-float', 'side-anim-dock');
-        main.style.transition = '';
-        main.style.marginRight = '';
-        main.style.marginLeft = '';
-      };
-      /* 60ms 后: 解禁过渡 → 挂浮起/落下动画 + main 平滑到新宽; 450ms 清理; 1.2s 兜底 */
-      setTimeout(() => {
-        document.body.classList.remove('no-anim');
-        side.classList.add(nowNarrow ? 'side-anim-float' : 'side-anim-dock');
-        if (needsComp) {
-          main.style.transition = 'margin .35s var(--ease)';
-          if (delta > 0) main.style.marginRight = '0px';
-          else main.style.marginLeft = '0px';
-        }
-        setTimeout(cleanup, 450);
-      }, 60);
-      setTimeout(cleanup, 1200);
     }
-    /* 同断点内 resize: 保持现状(不关抽屉), 仅校正形变开关状态 */
     updateToggleMode();
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
