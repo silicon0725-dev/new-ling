@@ -16,17 +16,26 @@ function injectIcons(root = document) {
   });
 }
 
-/* ── Toast（普通 4s，错误 6s；exit 快于 enter；带语义图标） ── */
+/* ── Toast（普通 4s，错误 6s；入场/退场统一走 Motion 引擎；带语义图标） ── */
 function toast(msg, isError = false) {
   const el = document.createElement('div');
-  el.className = 'toast enter' + (isError ? ' error' : '');
+  el.className = 'toast' + (isError ? ' error' : '');
   el.innerHTML = icon(isError ? 'x' : 'check', 14) + '<span style="margin-left:8px">' + esc(msg) + '</span>';
   el.style.display = 'flex'; el.style.alignItems = 'center';
   $('#toasts').appendChild(el);
-  requestAnimationFrame(() => el.classList.remove('enter'));
-  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
-    setTimeout(() => el.remove(), 260); }, isError ? 6000 : 4000);
+  Motion.motion(el, { y: 0, opacity: 1, speed: 'fast' }, { from: { y: 8, opacity: 0 } });
+  setTimeout(() => {
+    Motion.motion(el, { y: 8, opacity: 0, speed: 'fast' }).finished.then(() => el.remove());
+  }, isError ? 6000 : 4000);
 }
+
+/* ── 统一入场（Motion 引擎，js/motion.js）：替代全部 CSS rise/pop 关键帧 ──
+   级联间隔 = --stagger 40ms；超过 12 项封顶, 长列表不拖沓;
+   页面滑动过渡期间直接就位(页面本身在动, 抑制列表双重动画) */
+const rise = (el, i = 0) => {
+  if (pageSliding) return;
+  Motion.motion(el, { y: 0, opacity: 1, speed: 'med' }, { from: { y: 6, opacity: 0 }, delay: Math.min(i, 12) * 40 });
+};
 const requireApi = () => {
   if (Store.apiReady()) { LLM.guard(Store.settings.baseUrl); return true; }
   toast('尚未配置模型 API，请先到设置页完成配置', true); location.hash = '#/settings'; return false;
@@ -34,16 +43,56 @@ const requireApi = () => {
 const llmOpts = () => ({ ...Store.settings });
 
 /* ── 路由 ── */
-const routes = ['chat', 'characters', 'territory', 'starmap', 'settings'];
+const routes = ['chat', 'characters', 'territory', 'starmap', 'settings'];   /* 顺序即过渡方向轴 */
 let booted = false;
+let pageSliding = false;     /* 页面滑动中抑制列表级联入场, 避免双重动画 */
+
+/* 旧页冻结为像素级覆盖层: 按当前流式位置绝对定位, 保持视觉不动、脱离布局 */
+function ghost(el) {
+  const m = document.querySelector('main').getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  Object.assign(el.style, {
+    position: 'absolute', zIndex: 2,
+    left: (r.left - m.left) + 'px', top: (r.top - m.top) + 'px',
+    width: r.width + 'px', height: r.height + 'px',
+  });
+  el.classList.add('page-ghost');
+}
+/* 幽灵还原为干净隐藏态(退场完成, 或被快速切回) */
+function unghost(el) {
+  el.getAnimations().forEach(a => a.cancel());
+  el.classList.remove('page-ghost');
+  el.style.position = el.style.left = el.style.top = el.style.width =
+    el.style.height = el.style.zIndex = el.style.transform = el.style.opacity = '';
+}
+
 function route() {
   const name = (location.hash.replace('#/', '') || 'chat').split('?')[0];
   const page = routes.includes(name) ? name : 'chat';
-  $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
+  const prev = document.querySelector('.page.active');
+  const next = document.querySelector(`.page[data-page="${page}"]`);
+  const sliding = booted && prev && prev !== next;      /* 首次进入/同页刷新: 不滑 */
+  if (next.classList.contains('page-ghost')) unghost(next);   /* 快速来回切: 新页可能是退场中的幽灵 */
+  pageSliding = sliding;
+
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
   if (booted) Sfx.play('select');
+  if (sliding) ghost(prev);                             /* 先冻结旧页(还在流内), 再切 active */
+
+  $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
   ({ chat: renderChat, characters: renderChars, territory: renderTerritory, starmap: renderStarmap, settings: renderSettings })[page]();
   EdgeGlow.collect();                 /* 页面重渲染后重新收集发光目标 */
+
+  if (sliding) {
+    const dir = routes.indexOf(page) > routes.indexOf(prev.dataset.page) ? 1 : -1;
+    Motion.motion(prev, { x: -28 * dir, opacity: 0, speed: 'fast' }).finished.then(() => unghost(prev));
+    Motion.motion(next, { x: 0, opacity: 1, speed: 'med' }, { from: { x: 28 * dir, opacity: 0 } })
+      .finished.then(() => { pageSliding = false; });
+  } else {
+    pageSliding = false;
+    if (booted && prev === next) { /* 同页重复路由, 已重渲染 */ }
+    else Motion.motion(next, { y: 0, opacity: 1, speed: 'med' }, { from: { y: 6, opacity: 0 } });
+  }
   booted = true;
 }
 window.addEventListener('hashchange', route);
@@ -77,6 +126,7 @@ function renderChat() {
     <div class="session-item ${x.id === c.id ? 'active' : ''}" data-cid="${x.id}">
       <span>${esc(x.emoji)} ${esc(x.name)}</span>
     </div>`).join('');
+  document.querySelectorAll('#sessions .session-item, #chat-chars .session-item').forEach(rise);
   renderMessages();
 }
 
@@ -88,6 +138,7 @@ function renderMessages() {
     if (m.role === 'assistant' && m.streaming) return `<div class="bubble ai streaming"><span class="dots"><i></i><i></i><i></i></span></div>`;
     return `<div class="bubble ${m.role === 'user' ? 'user' : 'ai'}">${esc(m.content)}</div>`;
   }).join('');
+  [...wrap.children].forEach(el => rise(el));   /* 消息体量不定, 不级联 */
   wrap.scrollTop = wrap.scrollHeight;
   stick.check(wrap);
 }
@@ -109,6 +160,7 @@ async function send() {
   if (!text || state.streaming) return;
   if (!requireApi()) return;
   input.value = '';
+  sizeComposer(input);                              /* 清空后动画回收高度 */
   const charId = state.charId, sessionId = state.sessionId;
   const c = Store.char(charId), s = Store.session(charId, sessionId);
   Store.pushMessage(charId, sessionId, { role: 'user', content: text });
@@ -186,20 +238,21 @@ async function distillAsync(charId, userText, aiText) {
 /* ═══ 角色页 ═══ */
 function renderChars() {
   const chars = Store.characters;
-  $('#char-grid').innerHTML = chars.map((c, i) => `
-    <div class="card char-card clickable" style="animation-delay:${i * 40}ms" data-open="${c.id}">
+  $('#char-grid').innerHTML = chars.map(c => `
+    <div class="card char-card clickable" data-open="${c.id}">
       <div class="avatar">${esc(c.emoji)}</div>
       <div class="name">${esc(c.name)}</div>
       <div class="persona">${esc(c.persona)}</div>
       <div class="traits">${c.traits.map(t => `<span class="trait ${t.state}">${esc(t.name)}</span>`).join('')}</div>
       <div class="row" style="margin-top:auto; padding-top:8px">
-        <button class="btn sm" data-edit="${c.id}" data-icon="pencil">编辑</button>
-        <button class="btn sm danger" data-delchar="${c.id}" data-icon="trash">删除</button>
+        <button class="btn sm" data-edit="${c.id}" data-icon="pencil" title="编辑"><span class="bl">编辑</span></button>
+        <button class="btn sm danger" data-delchar="${c.id}" data-icon="trash" title="删除"><span class="bl">删除</span></button>
         <span style="margin-left:auto; font-size:var(--fs-xs); color:var(--text-3)">${c.arcs.length} 段记忆</span>
       </div>
     </div>`).join('') ||
     `<div class="empty" style="grid-column:1/-1"><span data-icon="sparkles" data-icon-size="34"></span>还没有角色——铸造第一颗星。</div>`;
   injectIcons($('#char-grid'));
+  document.querySelectorAll('#char-grid .char-card').forEach(rise);
 }
 
 /* 铸造 / 编辑（同一模态） */
@@ -214,6 +267,7 @@ function openCharModal(char) {
   $('#forge-src').value = '';
   $('#forge-area').style.display = char ? 'none' : 'block';
   $('#char-modal').classList.add('open');
+  Motion.motion($('#char-modal .modal'), { size: 1, opacity: 1, speed: 'slow' }, { from: { size: 0.96, opacity: 0 } });
   Sfx.play('open');
   $('#f-name').focus();
 }
@@ -271,6 +325,7 @@ function renderTerritory() {
       <div class="what">${esc(e.text)}</div></div>`).join('') ||
     '<div class="empty"><div class="glyph">🏡</div>还没有生活记录——生成一段近况。</div>' :
     '<div class="empty"></div>';
+  document.querySelectorAll('#timeline .tl-entry').forEach(rise);
 }
 async function generateTimeline() {
   const c = Store.char(state.tlFocus);
@@ -318,6 +373,8 @@ function pickNodeDetail(node) {
       ${trait ? `权重 ${trait.weight}/5 · ${trait.state === 'dormant' ? '休眠中' : '活跃'} · 最近活跃 ${fmtTs(trait.lastActive)}` : ''}
     </div>`;
   el.classList.add('show');
+  /* 统一变换引擎入场: 落定 y8→0 + 淡入(替代 CSS rise 关键帧, 曲线与全应用同源) */
+  Motion.motion(el, { y: 0, opacity: 1, speed: 'fast' }, { from: { y: 8, opacity: 0 } });
 }
 const showNodeDetail = pickNodeDetail;
 
@@ -370,11 +427,15 @@ function bind() {
   /* 对话 */
   $('#chat-scroll').addEventListener('scroll', (e) => stick.check(e.target));
   $('#float-bottom').addEventListener('click', () => { const s = $('#chat-scroll'); stick.up = false; s.scrollTop = s.scrollHeight; stick.check(s); });
-  $('#composer').addEventListener('input', (e) => {   /* 自动增高 */
-    const t = e.target;
+  /* 自动增高（统一走 Motion）: auto 态测量解锁收缩, 归位后动画到目标高 */
+  const sizeComposer = (t) => {
+    const prev = t.style.height;
     t.style.height = 'auto';
-    t.style.height = Math.min(t.scrollHeight, 160) + 'px';
-  });
+    const target = Math.min(t.scrollHeight, 160);
+    t.style.height = prev;
+    Motion.motion(t, { height: target, speed: 'fast' });
+  };
+  $('#composer').addEventListener('input', (e) => sizeComposer(e.target));
   $('#composer').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
@@ -514,7 +575,7 @@ function bindDrawer() {
 const EdgeGlow = (() => {
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
   const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom, '
-    + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item';
+    + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item, .nav';
   const REACH = 90;                 // 感应半径(px), 距边缘 90px 内开始渐亮
   let targets = [], raf = 0, mx = -1e4, my = -1e4;
 
@@ -544,6 +605,37 @@ const EdgeGlow = (() => {
   document.addEventListener('pointermove', onMove, { passive: true });
   collect();
   return { collect };
+})();
+
+/* ── 角色卡列数切换: 盒宽从前值动画(Motion), 列数变化不再硬切 ──
+   目标宽取自 gridTemplateColumns 轨道真值(动画中量 rect 会读到中间值);
+   动画中再来新尺寸 = Motion 平滑接管改道(从当前动画值到新轨宽), 快速连续切换不失效;
+   结束清内联宽还给网格 */
+(() => {
+  const grid = $('#char-grid');
+  if (!grid) return;
+  let prevW = null;
+  const flying = el => el.getAnimations().some(a => {
+    try { return a.effect.getKeyframes().some(kf => 'width' in kf); } catch { return false; }
+  });
+  const apply = () => {
+    const cards = [...grid.querySelectorAll('.char-card')];
+    if (!cards.length || !grid.offsetWidth) { if (!grid.offsetWidth) prevW = null; return; }
+    const tracks = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).map(parseFloat).filter(n => n > 0);
+    if (!tracks.length) return;
+    cards.forEach((el, i) => {
+      const w1 = Math.round(tracks[i % tracks.length]);
+      if (flying(el)) {
+        Motion.motion(el, { width: w1, speed: 'med' }).finished.then(() => { el.style.width = ''; });
+      } else {
+        const w0 = prevW ? prevW[i] : Math.round(el.getBoundingClientRect().width);
+        if (Math.abs(w1 - w0) >= 2)
+          Motion.motion(el, { width: w1, speed: 'med' }, { from: { width: w0 } }).finished.then(() => { el.style.width = ''; });
+      }
+    });
+    prevW = cards.map((_, i) => Math.round(tracks[i % tracks.length]));
+  };
+  new ResizeObserver(() => requestAnimationFrame(apply)).observe(grid);
 })();
 
 bind();
