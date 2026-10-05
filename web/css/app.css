@@ -328,8 +328,8 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
   opacity: 0; pointer-events: none; z-index: 80;
   transition: opacity var(--dur-med) var(--ease); }
 
-/* ═══ 窄屏自适应 ≤760px：导航只留图标 + 侧栏抽屉 ═══ */
-@media (max-width: 760px) {
+/* ═══ 窄屏自适应 ≤850px：导航只留图标 + 侧栏抽屉(断点留缓冲, 避免 761 等临界宽叠压) ═══ */
+@media (max-width: 850px) {
   .nav { padding: 3px; gap: 1px; }             /* 胶囊保持居中，仅收紧 */
   .nav-item { padding: 7px; gap: 0; }          /* 文字隐藏后 gap 归零, 图标居中 */
   .nav-label { max-width: 0; opacity: 0; margin: 0; }   /* 文字收起(带过渡), 只留图标 */

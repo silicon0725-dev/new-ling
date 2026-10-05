@@ -463,7 +463,7 @@ function bind() {
 
 /* ── 侧栏形变开关（morphicons 式）：唯一按钮附着侧栏右上角,
    收起后滑到屏幕左上; 图标 panel-left ⇄ x 随状态交叉形变 ── */
-const isNarrow = () => window.matchMedia('(max-width: 760px)').matches;
+const isNarrow = () => window.matchMedia('(max-width: 850px)').matches;
 function closeDrawer() { document.body.classList.remove('side-open'); }
 function sidebarExpanded() {
   return isNarrow() ? document.body.classList.contains('side-open')
