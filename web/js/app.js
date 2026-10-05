@@ -464,11 +464,10 @@ function bind() {
 /* ── 侧栏形变开关（morphicons 式）：唯一按钮附着侧栏右上角,
    收起后滑到屏幕左上; 图标 panel-left ⇄ x 随状态交叉形变 ── */
 const isNarrow = () => window.matchMedia('(max-width: 850px)').matches;
-function closeDrawer() { document.body.classList.remove('side-open'); }
-function sidebarExpanded() {
-  return isNarrow() ? document.body.classList.contains('side-open')
-                    : !document.body.classList.contains('side-closed');
-}
+function closeDrawer() { sideOpen = false; document.body.classList.remove('side-open'); }
+/* 侧栏开合的显式唯一真源(跨模式共享); 类只是按模式重放的结果, 禁止反推 */
+let sideOpen = !window.matchMedia('(max-width: 850px)').matches;   /* 桌面默认开/手机默认关 */
+function sidebarExpanded() { return sideOpen; }
 function updateToggleMode() {
   const b = $('#sidenav-toggle');
   const mode = sidebarExpanded() ? 'collapse' : 'expand';
@@ -480,32 +479,32 @@ function bindDrawer() {
   b.innerHTML = `<span class="morph-ic ic-x">${icon('x', 16)}</span>`
               + `<span class="morph-ic ic-panel">${icon('panel-left', 16)}</span>`;
   b.addEventListener('click', () => {
-    const wasExpanded = sidebarExpanded();
-    if (isNarrow()) document.body.classList.toggle('side-open');
-    else document.body.classList.toggle('side-closed');
+    const wasExpanded = sideOpen;
+    sideOpen = !sideOpen;
+    applySidebarState();
     updateToggleMode();
     Sfx.play(wasExpanded ? 'close' : 'open');
   });
   $('#scrim').addEventListener('click', closeDrawer);
-  /* 跨断点(横竖屏切换): 侧栏开合状态保持 + 无缝形变。
-     侧栏永久 fixed, 桌面⇄手机只是宽度/背景/阴影/main 让位的属性差异, 全部由 CSS 过渡
-     完成动画(浮起=变宽变浅阴影显 / 落下=反向); JS 只做状态类映射, 无需任何补帧 hack。 */
-  let wasNarrow = isNarrow();
-  window.addEventListener('resize', () => {
-    const nowNarrow = isNarrow();
-    if (nowNarrow !== wasNarrow) {
-      wasNarrow = nowNarrow;
-      if (nowNarrow) {          /* 桌面→手机: 侧栏展开则抽屉保持打开 */
-        document.body.toggle('side-open', !document.body.classList.contains('side-closed'));
-        document.body.classList.remove('side-closed');
-      } else {                  /* 手机→桌面: 抽屉开着则侧栏展开, 关着则保持收起 */
-        const open = document.body.classList.contains('side-open');
-        document.body.classList.remove('side-open');
-        document.body.classList.toggle('side-closed', !open);
-      }
+  /* 跨断点映射: 幂等 apply —— 按当前模式把 sideOpen 重放为对应类。
+     mq change(断点翻转精确触发) + resize(自愈: 任意 resize 都重放, 漏掉的翻转
+     会被下一次 resize 修正; 类不再被反推, 无 clean 歧义)。 */
+  const applySidebarState = () => {
+    if (isNarrow()) {
+      document.body.classList.toggle('side-open', sideOpen);
+      document.body.classList.remove('side-closed');
+    } else {
+      document.body.classList.toggle('side-closed', !sideOpen);
+      document.body.classList.remove('side-open');
     }
-    updateToggleMode();
-  });
+  };
+  window.applySidebarState = applySidebarState;          /* 调试暴露 */
+  const mqNarrow = window.matchMedia('(max-width: 850px)');
+  const onBreakpoint = () => { applySidebarState(); updateToggleMode(); };
+  if (mqNarrow.addEventListener) mqNarrow.addEventListener('change', onBreakpoint);
+  else mqNarrow.addListener(onBreakpoint);
+  window.addEventListener('resize', onBreakpoint);       /* 自愈通道 */
+  applySidebarState();
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
   updateToggleMode();
 }

@@ -353,6 +353,7 @@ body.side-closed .page-side { transform: translateX(-105%); }   /* 收起 = 滑�
   }
   .scrim { z-index: 96; }
   body.side-open .page-side { transform: none; }   /* 抽屉滑入 */
+  body.side-open .scrim { opacity: 1; pointer-events: auto; }   /* 抽屉打开时压暗背景 */
   /* 手机模式收起态: 开关钮回屏幕左上 */
   .sidenav-toggle { top: 12px; left: 12px; }
   body.side-open .sidenav-toggle { top: 12px; left: 224px; }   /* 附着抽屉右上角(280-40-16) */
