@@ -994,6 +994,7 @@ export component App inherits Window {
                 }
                 if !root.api-ready : Banner {
                     text: "尚未配置模型 API：配置后即可为入住角色生成生活近况。";
+                    action => { root.goto-settings(); }
                 }
 
                 // 入住角色卡（整卡可点 → 跳对话页与该角色交谈）

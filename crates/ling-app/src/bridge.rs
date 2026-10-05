@@ -1657,6 +1657,8 @@ fn handle_event(ctx: &Ctx, event: AppEvent) {
                 Ok(msg) => ctx.toast(msg.clone()),
                 Err(msg) => ctx.toast_error(msg.clone()),
             }
+            // 先刷新角色列表再选中：取导入后的首角色，而非导入前的脏值（与 bootstrap 顺序对齐）
+            ctx.refresh_characters();
             {
                 let mut inner = ctx.inner.lock().unwrap();
                 inner.current_character = inner.chars.first().map(|c| c.id).unwrap_or(-1);
@@ -1664,7 +1666,6 @@ fn handle_event(ctx: &Ctx, event: AppEvent) {
                 inner.session_pending = false;
                 inner.starmap_char = inner.current_character;
             }
-            ctx.refresh_characters();
             ctx.refresh_sessions();
             ctx.refresh_timeline();
             ctx.reload_starmap();
