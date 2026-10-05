@@ -9,34 +9,39 @@
 </head>
 <body>
 
-<header class="topbar">
-  <div class="brand" title="ling">ling</div>
-  <nav class="nav" aria-label="页面导航">
-    <div class="nav-item active" data-page="chat" data-icon="message-circle" tabindex="0"><span class="nav-label">对话</span></div>
-    <div class="nav-item" data-page="characters" data-icon="users" tabindex="0"><span class="nav-label">角色</span></div>
-    <div class="nav-item" data-page="territory" data-icon="house" tabindex="0"><span class="nav-label">领地</span></div>
-    <div class="nav-item" data-page="starmap" data-icon="sparkles" tabindex="0"><span class="nav-label">星图</span></div>
-  </nav>
-  <div class="top-actions">
-    <div class="nav-item" data-page="settings" data-icon="settings" tabindex="0" title="设置"><span class="nav-label">设置</span></div>
-    <button class="iconbtn" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
-    <div class="api-chip" id="api-chip">API 未配置</div>
-  </div>
-</header>
+<body>
 
-<main>
+<div class="brand" id="brand" title="ling">ling</div>
+<nav class="nav" aria-label="页面导航">
+  <div class="nav-item active" data-page="chat" data-icon="message-circle" tabindex="0"><span class="nav-label">对话</span></div>
+  <div class="nav-item" data-page="characters" data-icon="users" tabindex="0"><span class="nav-label">角色</span></div>
+  <div class="nav-item" data-page="territory" data-icon="house" tabindex="0"><span class="nav-label">领地</span></div>
+  <div class="nav-item" data-page="starmap" data-icon="sparkles" tabindex="0"><span class="nav-label">星图</span></div>
+</nav>
+<button class="iconbtn sfx-float" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
+
+<div class="app">
+
+  <!-- 全局侧边栏：会话/角色 + 底部(设置 + API 状态) -->
+  <aside class="page-side" id="sidebar">
+    <button class="btn" id="new-session" style="width:100%" data-icon="plus">新会话</button>
+    <div style="font-size:var(--fs-xs); color:var(--text-3); padding:4px 2px">会话</div>
+    <div class="session-list" id="sessions"></div>
+    <div style="font-size:var(--fs-xs); color:var(--text-3); padding:4px 2px; margin-top:8px">角色</div>
+    <div class="session-list" id="chat-chars"></div>
+    <div id="char-list-empty" class="empty" style="min-height:80px"></div>
+    <div class="side-spacer"></div>
+    <div class="side-foot">
+      <div class="nav-item" data-page="settings" data-icon="settings" tabindex="0"><span class="nav-label">设置</span></div>
+      <div class="api-chip" id="api-chip" title="点击前往设置">API 未配置</div>
+    </div>
+  </aside>
+
+  <main>
 
   <!-- ═══ 对话 ═══ -->
   <section class="page active" data-page="chat">
-    <aside class="page-side">
-      <button class="btn" id="new-session" style="width:100%" data-icon="plus">新会话</button>
-      <div style="font-size:var(--fs-xs); color:var(--text-3); padding:4px 2px">会话</div>
-      <div class="session-list" id="sessions"></div>
-      <div style="font-size:var(--fs-xs); color:var(--text-3); padding:4px 2px; margin-top:8px">角色</div>
-      <div class="session-list" id="chat-chars"></div>
-      <div id="char-list-empty" class="empty" style="min-height:120px"></div>
-    </aside>
-    <div class="page-main" id="chat-body" style="display:none; position:relative">
+    <div class="chat-col" id="chat-body" style="display:none; position:relative">
       <div class="chat-scroll" id="chat-scroll">
         <div class="chat-inner" id="messages"></div>
       </div>

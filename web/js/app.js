@@ -354,6 +354,10 @@ function bind() {
     Sfx.setMuted(!Sfx.muted()); renderSfxToggle();
     if (!Sfx.muted()) Sfx.play('check');
   });
+  $('#api-chip').addEventListener('click', () => {
+    if (!Store.apiReady()) { location.hash = '#/settings'; return; }
+    location.hash = '#/settings';   /* 已配置也允许去设置页查看 */
+  });
   window.addEventListener('hashchange', route);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
