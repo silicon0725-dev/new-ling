@@ -487,7 +487,18 @@ function bindDrawer() {
     Sfx.play(wasExpanded ? 'close' : 'open');
   });
   $('#scrim').addEventListener('click', closeDrawer);
-  window.addEventListener('resize', () => { closeDrawer(); updateToggleMode(); });
+  /* 跨断点(横竖屏切换): 瞬间禁用过渡防撕裂, 并清理另一模式的状态残留 */
+  let wasNarrow = isNarrow();
+  window.addEventListener('resize', () => {
+    const nowNarrow = isNarrow();
+    closeDrawer();
+    if (nowNarrow !== wasNarrow) {
+      wasNarrow = nowNarrow;
+      document.body.classList.add('no-anim');
+      requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('no-anim')));
+    }
+    updateToggleMode();
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isNarrow()) closeDrawer(); });
   updateToggleMode();
 }

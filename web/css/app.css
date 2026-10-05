@@ -61,7 +61,12 @@ body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏�
   padding: 6px 13px; border-radius: 999px;
   color: var(--text-2); cursor: pointer; user-select: none; font-size: var(--fs-sm);
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease);
+    box-shadow var(--dur-fast) var(--ease), padding .3s var(--ease);
+}
+/* 导航文字: 用 max-width+opacity 过渡(横竖屏切换时平滑展开/收起, display 无法动画) */
+.nav-label {
+  display: inline-block; max-width: 120px; opacity: 1; overflow: hidden; white-space: nowrap;
+  transition: max-width .3s var(--ease), opacity .25s var(--ease);
 }
 .nav-item svg.ic { opacity: 0.75; transition: opacity var(--dur-fast) var(--ease); }
 .nav-item.active svg.ic, .nav-item:hover svg.ic { opacity: 1; }
@@ -81,8 +86,8 @@ body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏�
 .api-chip:hover { color: var(--text-2); border-color: var(--border-strong); --ring: var(--border-strong); }
 
 /* ── 页面骨架（桌面：侧栏为全高实心栏, 挤开内容; 悬浮胶囊只浮在主内容上方） ── */
-.app { flex: 1; min-height: 0; display: flex; }
-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 56px; }
+.app { flex: 1; min-height: 0; display: flex; transition: padding .3s var(--ease); }
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-top: 56px; transition: padding .3s var(--ease); }
 .page { display: none; flex: 1; min-width: 0; min-height: 0; }
 .page.active { display: flex; }
 /* 桌面: 展开时隐藏悬浮开关(侧栏头部自带收起钮), 收起后显示 */
@@ -326,7 +331,7 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
 @media (max-width: 760px) {
   .nav { padding: 3px; gap: 1px; }             /* 胶囊保持居中，仅收紧 */
   .nav-item { padding: 7px; }
-  .nav-label { display: none; }                /* 文字收起，只留图标 */
+  .nav-label { max-width: 0; opacity: 0; margin: 0; }   /* 文字收起(带过渡), 只留图标 */
 
   .app { padding-top: 52px; }
   main { padding-top: 0; }                     /* 让位由 .app 承担, 勿叠加 */
@@ -359,6 +364,9 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
    光标靠近组件边缘时, 最近点处的边缘环带被照亮(参考 Windows 图标近邻光带)。
    ::after 只保留 1.5px 边缘环(mask xor), 环色为径向光斑, 中心跟随光标最近点。 ── */
 .glow-edge:not(.sidenav-toggle):not(.sfx-float) { position: relative; }   /* fixed 悬浮钮自带定位, 勿覆盖 */
+
+/* 跨断点(横竖屏切换)瞬间禁用过渡: 定位模式切换不做插值, 消除"跳一下"的撕裂感 */
+body.no-anim *, body.no-anim *::before, body.no-anim *::after { transition: none !important; }
 .glow-edge::after {
   content: '';
   position: absolute; inset: 0;
