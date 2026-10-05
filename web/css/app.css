@@ -61,7 +61,7 @@ body.side-closed .sidenav-toggle { top: 12px; left: 12px; }   /* 收起态: 屏�
   padding: 6px 13px; border-radius: 999px;
   color: var(--text-2); cursor: pointer; user-select: none; font-size: var(--fs-sm);
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease), padding .3s var(--ease);
+    box-shadow var(--dur-fast) var(--ease), padding .3s var(--ease), gap .3s var(--ease);
 }
 /* 导航文字: 用 max-width+opacity 过渡(横竖屏切换时平滑展开/收起, display 无法动画) */
 .nav-label {
@@ -331,7 +331,7 @@ body.side-closed .page-side { margin-left: -260px; }   /* 248 宽 + 描边, 滑�
 /* ═══ 窄屏自适应 ≤760px：导航只留图标 + 侧栏抽屉 ═══ */
 @media (max-width: 760px) {
   .nav { padding: 3px; gap: 1px; }             /* 胶囊保持居中，仅收紧 */
-  .nav-item { padding: 7px; }
+  .nav-item { padding: 7px; gap: 0; }          /* 文字隐藏后 gap 归零, 图标居中 */
   .nav-label { max-width: 0; opacity: 0; margin: 0; }   /* 文字收起(带过渡), 只留图标 */
 
   .app { padding-top: 52px; }
