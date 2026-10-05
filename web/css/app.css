@@ -74,7 +74,7 @@ main { flex: 1; min-width: 0; display: flex; }
 .page.active { display: flex; }
 .page-side {
   width: 248px; flex-shrink: 0; border-right: 1px solid var(--border);
-  overflow-y: auto; padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
+  overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
 }
 .side-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -314,7 +314,6 @@ body.side-closed .page-side { display: none; }    /* 桌面收起侧栏 */
     transform: translateX(-105%);              /* 收起 */
     transition: transform var(--dur-med) var(--ease);
     box-shadow: 12px 0 40px rgba(0,0,0,.55);
-    padding-top: var(--sp-2);
   }
   .scrim { z-index: 96; }
   .side-close { display: inline-flex; }        /* 抽屉内提供关闭钮（右上 ling 旁） */
