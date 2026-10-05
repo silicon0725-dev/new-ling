@@ -370,6 +370,11 @@ function bind() {
   /* 对话 */
   $('#chat-scroll').addEventListener('scroll', (e) => stick.check(e.target));
   $('#float-bottom').addEventListener('click', () => { const s = $('#chat-scroll'); stick.up = false; s.scrollTop = s.scrollHeight; stick.check(s); });
+  $('#composer').addEventListener('input', (e) => {   /* 自动增高 */
+    const t = e.target;
+    t.style.height = 'auto';
+    t.style.height = Math.min(t.scrollHeight, 160) + 'px';
+  });
   $('#composer').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });

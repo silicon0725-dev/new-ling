@@ -19,6 +19,7 @@ const ICONS = {
   "x": `<path d="M18 6 6 18" /><path d="m6 6 12 12" />`,
   "moon": `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />`,
   "corner-down-left": `<path d="M20 4v7a4 4 0 0 1-4 4H4" /><path d="m9 10-5 5 5 5" />`,
+  "arrow-up": `<path d="M12 19V5" /><path d="m5 12 7-7 7 7" />`,
 };
 
 /* icon('send-horizontal', 16) → 内联 SVG 字符串 */
