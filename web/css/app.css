@@ -441,32 +441,31 @@ body.editor-focus .nav, body.editor-focus .sfx-float, body.editor-focus .sidenav
 .we-rtbar { container-type: inline-size; }
 /* 编辑/预览 激活态(复用 .btn .sm 基础样式) */
 #we-md-edit.on, #we-md-prev.on { background: var(--surface-strong); color: var(--text); box-shadow: var(--glow); }
-/* 按钮文字窄宽自动收起(带动画): 收起后按钮变圆角正方形 */
+/* 按钮文字窄宽自动收起 — 与角色卡按钮同一动画参数 */
 #we-top .bl, .we-rtbar .bl {
   display: inline-block; max-width: 5em; opacity: 1; overflow: hidden; white-space: nowrap;
   vertical-align: bottom;
-  transition: max-width .3s var(--ease), opacity .24s var(--ease);
+  transition: max-width var(--dur-med) var(--ease), opacity var(--dur-fast) var(--ease);
 }
-/* 形状变化与文字收起同步动画 */
-#we-top .btn.sm, .we-rtbar .btn.sm {
-  transition: width .3s var(--ease), padding .3s var(--ease), gap .3s var(--ease),
-    background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-}
-.we-rtbar .btn.sm { height: 28px; font-size: var(--fs-xs); padding: 0 8px; }
+.we-rtbar .btn.sm { height: 28px; font-size: var(--fs-xs); }
 @container (max-width: 420px) {
   #we-top .bl { max-width: 0; opacity: 0; }
-  #we-top .btn.sm { width: 34px; height: 34px; padding: 0; gap: 0; justify-content: center; }
+  #we-top .btn.sm { padding: 6px 9px; gap: 0; }
 }
-@container (max-width: 340px) {
+@container (max-width: 420px) {
   .we-rtbar .bl { max-width: 0; opacity: 0; }
-  .we-rtbar .btn.sm { width: 28px; height: 28px; padding: 0; gap: 0; justify-content: center; }
+  .we-rtbar .btn.sm { padding: 6px 9px; gap: 0; }
 }
 #we-page .we-pane { padding-bottom: var(--sp-6); }
 .we-rtbar { display: flex; gap: 4px; margin-bottom: 4px; }
 .we-rtbar button {
-  width: 30px; height: 28px; border: 1px solid var(--border); border-radius: 8px;
+  height: 28px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text-2); cursor: pointer; font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
 }
+.we-rtbar button[data-pre] { width: 28px; flex: 0 0 28px; }   /* 语法钮=定宽方块; 编辑/预览随文字伸缩 */
 .we-rtbar button:hover { color: var(--text); border-color: var(--border-strong); }
 .we-rt {
   min-height: 160px; max-height: 320px; overflow-y: auto;
@@ -672,14 +671,15 @@ body.editor-focus .nav, body.editor-focus .sfx-float, body.editor-focus .sidenav
   .modal, .banner, .toast, .bubble, .trait, .session-item,
   .node-detail, .resident, .float-bottom, .api-chip,
   .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .ctx-menu, .ctx-menu button,
-  .side-foot .nav-item,
+  .we-rtbar button,
   .glow-edge:where(:not(.nav, .world-intro.collapsed, .seg-btn))::after {   /* 胶囊=真药丸(999px圆端), 环带勿套 superellipse 否则描边变圆角矩形 */
     corner-shape: superellipse(2.4);
   }
   .btn, .input, .textarea, .card, .iconbtn, .composer-shell,
   .modal, .banner, .toast, .bubble.user, .trait,
   .resident, .float-bottom, .api-chip, .side-foot .nav-item,
-  .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .ctx-menu, .ctx-menu button {
+  .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .ctx-menu, .ctx-menu button,
+  .we-rtbar button {
     border-color: transparent;
     box-shadow: inset 0 0 0 1px var(--ring, var(--border));
   }

@@ -1175,7 +1175,7 @@ const EdgeGlow = (() => {
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
   const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom, '
     + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item, .nav, '
-    + '.world-card, .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .seg-btn';
+    + '.world-card, .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .seg-btn, .we-rtbar button';
   const REACH = 90;                 // 感应半径(px), 距边缘 90px 内开始渐亮
   let targets = [], raf = 0, mx = -1e4, my = -1e4;
 
