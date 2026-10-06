@@ -88,6 +88,39 @@ pub struct ArcRow {
     pub end_time: i64,
 }
 
+/// 语义图事实行（LMR）：记忆/特质/关系统一为 SPO + scope
+#[derive(Debug, Clone, PartialEq)]
+pub struct SemanticFactRow {
+    pub id: i64,
+    pub character_id: i64,
+    pub subject: String,
+    pub predicate: String,
+    pub object: String,
+    /// self / user / world
+    pub scope: String,
+    /// 数值型语义（特质强度 0..=1）；非数值事实为 None
+    pub value: Option<f64>,
+    pub confidence: f64,
+    pub importance: f64,
+    /// 来源事件（证据链主锚点）
+    pub source_event: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub valid_from: Option<i64>,
+    pub valid_until: Option<i64>,
+}
+
+/// 证据行：一条语义事实由多条场景支撑/削弱
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactEvidenceRow {
+    pub id: i64,
+    pub fact_id: i64,
+    pub scene_id: i64,
+    /// 正 = 确认，负 = 削弱
+    pub delta: f64,
+    pub created_at: i64,
+}
+
 /// 关键词列表 → JSON 文本（存库格式）
 fn keywords_to_json(keywords: &[String]) -> String {
     serde_json::to_string(keywords).unwrap_or_else(|_| "[]".to_string())
@@ -387,6 +420,130 @@ impl Store {
         Ok(())
     }
 
+    /// LMR：写入（或更新）一条语义事实。
+    /// 同一 (character, subject, predicate, object, scope) 视为同一事实：
+    /// 已存在则合并 value/confidence/importance 并刷新 updated_at，返回既有 id。
+    pub fn upsert_semantic_fact(
+        &self,
+        character_id: i64,
+        subject: &str,
+        predicate: &str,
+        object: &str,
+        scope: &str,
+        value: Option<f64>,
+        confidence: f64,
+        importance: f64,
+        source_event: Option<i64>,
+        now: i64,
+    ) -> rusqlite::Result<i64> {
+        self.conn.execute(
+            "INSERT INTO semantic_facts (character_id, subject, predicate, object, scope,
+                value, confidence, importance, source_event, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+             ON CONFLICT (character_id, subject, predicate, object, scope) DO UPDATE SET
+                value = COALESCE(?6, value),
+                confidence = MAX(confidence, ?7),
+                importance = MAX(importance, ?8),
+                source_event = COALESCE(?9, source_event),
+                updated_at = ?10",
+            params![character_id, subject, predicate, object, scope,
+                    value, confidence, importance, source_event, now],
+        )?;
+        Ok(self.conn.query_row(
+            "SELECT id FROM semantic_facts
+             WHERE character_id = ?1 AND subject = ?2 AND predicate = ?3 AND object = ?4 AND scope = ?5",
+            params![character_id, subject, predicate, object, scope],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// LMR：为语义事实追加证据（正=确认 负=削弱），并按证据增量重算置信度
+    pub fn add_fact_evidence(
+        &self,
+        fact_id: i64,
+        scene_id: i64,
+        delta: f64,
+        now: i64,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO fact_evidence (fact_id, scene_id, delta, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![fact_id, scene_id, delta, now],
+        )?;
+        self.conn.execute(
+            "UPDATE semantic_facts SET
+                confidence = MIN(1.0, MAX(0.05, 0.5 + (SELECT COALESCE(SUM(delta), 0) FROM fact_evidence WHERE fact_id = ?1))),
+                updated_at = ?2
+             WHERE id = ?1",
+            params![fact_id, now],
+        )?;
+        Ok(())
+    }
+
+    /// LMR：列出某角色的语义事实（按重要度降序）
+    pub fn list_semantic_facts(&self, character_id: i64) -> rusqlite::Result<Vec<SemanticFactRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, character_id, subject, predicate, object, scope, value, confidence,
+                    importance, source_event, created_at, updated_at, valid_from, valid_until
+             FROM semantic_facts WHERE character_id = ?1 AND valid_until IS NULL
+             ORDER BY importance DESC, updated_at DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![character_id], |row| {
+                Ok(SemanticFactRow {
+                    id: row.get(0)?,
+                    character_id: row.get(1)?,
+                    subject: row.get(2)?,
+                    predicate: row.get(3)?,
+                    object: row.get(4)?,
+                    scope: row.get(5)?,
+                    value: row.get(6)?,
+                    confidence: row.get(7)?,
+                    importance: row.get(8)?,
+                    source_event: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                    valid_from: row.get(12)?,
+                    valid_until: row.get(13)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// LMR：列出某条语义事实的证据链
+    pub fn list_fact_evidence(&self, fact_id: i64) -> rusqlite::Result<Vec<FactEvidenceRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, fact_id, scene_id, delta, created_at
+             FROM fact_evidence WHERE fact_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map(params![fact_id], |row| {
+                Ok(FactEvidenceRow {
+                    id: row.get(0)?,
+                    fact_id: row.get(1)?,
+                    scene_id: row.get(2)?,
+                    delta: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// LMR：粒度衰减——按所属事件的重要度推进场景 decay_level（0=raw, 1=summary, 2=micro）。
+    /// 阈值与 [`crate::memory::lmr::decay_level`] 纯函数一致：重要度越高速率越慢，层级封顶 2，不删除数据。
+    pub fn apply_scene_decay(&self, now: i64, half_life_secs: i64) -> rusqlite::Result<usize> {
+        self.conn.execute(
+            "UPDATE memory_scenes SET decay_level = MIN(2, CAST(
+                MAX(?1 - created_at, 0)
+              / MAX(?2 / (0.5 + COALESCE((SELECT importance FROM memory_events
+                                          WHERE id = memory_scenes.event_id), 0.5)), 1.0)
+              AS INTEGER))
+             WHERE created_at <= ?1",
+            params![now, half_life_secs],
+        )
+    }
+
     pub fn list_scenes(&self, character_id: i64) -> rusqlite::Result<Vec<SceneRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, character_id, content, keywords, event_id, created_at
@@ -669,5 +826,84 @@ mod tests {
         assert_eq!(v1, migrations::latest_version());
         store.migrate().unwrap();
         assert_eq!(store.user_version().unwrap(), v1);
+    }
+
+    #[test]
+    fn lmr_semantic_fact_upsert_and_evidence() {
+        let store = mem();
+        let cid = store
+            .insert_character("璃", "", "", "", 1)
+            .unwrap();
+        // 首次写入 → 新建
+        let id = store
+            .upsert_semantic_fact(cid, "璃", "likes", "astronomy", "self", None, 0.6, 0.7, None, 100)
+            .unwrap();
+        assert_eq!(
+            store.list_semantic_facts(cid).unwrap().len(),
+            1,
+            "同一 SPO+scope 幂等合并"
+        );
+        // 再写一次（不同置信度）→ 不产生新行
+        store
+            .upsert_semantic_fact(cid, "璃", "likes", "astronomy", "self", None, 0.9, 0.7, None, 200)
+            .unwrap();
+        assert_eq!(store.list_semantic_facts(cid).unwrap().len(), 1);
+        // 证据链：两条确认 → 置信度重算
+        let sid = store.insert_scene(cid, "聊星空", &[], 300).unwrap();
+        let sid2 = store.insert_scene(cid, "又聊星空", &[], 400).unwrap();
+        store.add_fact_evidence(id, sid, 0.2, 300).unwrap();
+        store.add_fact_evidence(id, sid2, 0.15, 400).unwrap();
+        let ev = store.list_fact_evidence(id).unwrap();
+        assert_eq!(ev.len(), 2);
+        let fact = store
+            .list_semantic_facts(cid)
+            .unwrap()
+            .into_iter()
+            .find(|f| f.id == id)
+            .unwrap();
+        assert!(
+            (fact.confidence - 0.85).abs() < 1e-9,
+            "confidence 应为 0.85，实际 {}（证据 {:?}）",
+            fact.confidence,
+            ev.iter().map(|e| e.delta).collect::<Vec<_>>()
+        );
+        // 删角色 → 级联清空语义图
+        assert!(store.delete_character(cid).unwrap());
+        assert!(store.list_semantic_facts(cid).unwrap().is_empty());
+    }
+
+    #[test]
+    fn lmr_scene_decay_progresses_with_age() {
+        let store = mem();
+        let cid = store
+            .insert_character("璃", "", "", "", 1)
+            .unwrap();
+        let half_life = 1000;
+        let eid = store.insert_event(cid, "事件", &[], 0, 0).unwrap();
+        store
+            .conn
+            .execute("UPDATE memory_events SET importance = 0.5 WHERE id = ?1", params![eid])
+            .unwrap();
+        let sid = store.insert_scene(cid, "场景", &[], 0).unwrap();
+        store.attach_scenes_to_event(eid, &[sid]).unwrap();
+        // 未到期：raw
+        store.apply_scene_decay(half_life - 1, half_life).unwrap();
+        let lvl = |store: &Store| -> i64 {
+            store
+                .conn
+                .query_row(
+                    "SELECT decay_level FROM memory_scenes WHERE id = ?1",
+                    params![sid],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(lvl(&store), 0);
+        // 超过一个半衰期：summary
+        store.apply_scene_decay(half_life * 2, half_life).unwrap();
+        assert!(lvl(&store) >= 1);
+        // 远超：封顶 micro
+        store.apply_scene_decay(half_life * 9, half_life).unwrap();
+        assert_eq!(lvl(&store), 2);
     }
 }

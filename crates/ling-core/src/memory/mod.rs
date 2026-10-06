@@ -5,9 +5,11 @@
 //! 检索策略抽象为 [`Retriever`] trait，当前提供关键词实现，后续可无缝替换为向量检索。
 
 pub mod engine;
+pub mod lmr;
 pub mod retriever;
 
 pub use engine::MemoryEngine;
+pub use lmr::{confidence_from_evidence, decay_level, score, ScoreComponents, ScoreWeights};
 pub use retriever::{KeywordRetriever, Retriever};
 
 /// 场景记忆：最小记忆单元，对应一段对话片段

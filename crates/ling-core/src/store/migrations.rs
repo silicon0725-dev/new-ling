@@ -79,7 +79,48 @@ CREATE INDEX idx_traits_character ON traits (character_id);
 CREATE INDEX idx_scenes_event     ON memory_scenes (event_id);
 CREATE INDEX idx_events_arc       ON memory_events (arc_id);
 "#,
-)];
+    ),
+    (
+    2,
+    "LMR：语义图（事实/特质/关系统一）+ 证据链 + 记忆三表示与衰减字段",
+    r#"
+CREATE TABLE semantic_facts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    character_id  INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    subject       TEXT    NOT NULL,
+    predicate     TEXT    NOT NULL,
+    object        TEXT    NOT NULL,
+    scope         TEXT    NOT NULL DEFAULT 'self' CHECK (scope IN ('self', 'user', 'world')),
+    value         REAL,
+    confidence    REAL    NOT NULL DEFAULT 0.5,
+    importance    REAL    NOT NULL DEFAULT 0.5,
+    source_event  INTEGER REFERENCES memory_events(id) ON DELETE SET NULL,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    valid_from    INTEGER,
+    valid_until   INTEGER,
+    UNIQUE (character_id, subject, predicate, object, scope)
+);
+CREATE INDEX idx_semantic_char ON semantic_facts (character_id, scope);
+CREATE INDEX idx_semantic_spo  ON semantic_facts (subject, predicate);
+
+CREATE TABLE fact_evidence (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_id    INTEGER NOT NULL REFERENCES semantic_facts(id) ON DELETE CASCADE,
+    scene_id   INTEGER NOT NULL REFERENCES memory_scenes(id) ON DELETE CASCADE,
+    delta      REAL    NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_evidence_fact ON fact_evidence (fact_id);
+
+ALTER TABLE memory_scenes ADD COLUMN micro_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_scenes ADD COLUMN decay_level   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE memory_events ADD COLUMN micro_summary TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_events ADD COLUMN importance    REAL    NOT NULL DEFAULT 0.5;
+ALTER TABLE memory_events ADD COLUMN confidence    REAL    NOT NULL DEFAULT 0.5;
+"#,
+    ),
+];
 
 /// 当前应有的最新版本号
 pub fn latest_version() -> i64 {
