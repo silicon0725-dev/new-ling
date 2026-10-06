@@ -46,7 +46,8 @@ const Store = (() => {
   };
 
   function blank() {
-    return { settings: { baseUrl: '', apiKey: '', model: '', autoDistill: true, sound: true }, characters: [], worlds: [] };
+    return { settings: { baseUrl: '', apiKey: '', model: '', autoDistill: true, sound: true,
+      ttsBaseUrl: '', ttsApiKey: '', ttsModel: '', ttsVoice: 'alloy' }, characters: [], worlds: [] };
   }
   let data = load();
 
@@ -63,6 +64,7 @@ const Store = (() => {
   const api = {
     get settings() { return data.settings; },
     get characters() { return data.characters; },
+    save,   /* 应用层会原地变更消息对象(流式拼接), 变更完成后手动落盘 */
     char(id) { return data.characters.find(c => c.id === id); },
     get worlds() { return data.worlds; },
     world(id) { return data.worlds.find(w => w.id === id); },

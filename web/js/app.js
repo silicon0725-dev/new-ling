@@ -5,7 +5,22 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; };
 const fmtTs = (ts) => new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const state = { charId: null, sessionId: null, streaming: null, starmap: null, worldMap: null, tlFocus: null, worldView: null, kbTab: 'char' };
+const state = { charId: null, sessionId: null, streaming: null, starmap: null, worldMap: null, tlFocus: null, worldView: null, kbTab: 'char', stickers: null };
+
+/* ── 表情包目录：assets/stickers/manifest.json（file + tags），加载失败=功能静默关闭 ── */
+async function loadStickers() {
+  if (state.stickers) return;
+  try {
+    const res = await fetch('assets/stickers/manifest.json');
+    const j = await res.json();
+    state.stickers = (Array.isArray(j.stickers) ? j.stickers : []).filter(s => s?.file && Array.isArray(s.tags));
+  } catch { state.stickers = []; }
+}
+const stickerByName = (file) => {
+  if (!file || !Array.isArray(state.stickers)) return null;
+  const f = String(file).trim();
+  return state.stickers.find(s => s.file === f) ?? state.stickers.find(s => s.file === f + '.gif') ?? null;
+};
 
 /* ── 图标注入：所有 [data-icon] 元素插入内联 SVG（动态渲染后需再调用） ── */
 function injectIcons(root = document) {
@@ -102,16 +117,19 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 
-/* 音效开关（顶栏图标按钮） */
+/* 顶栏按钮 = 自动朗读开关（音效开关已移至设置页） */
 function renderSfxToggle() {
   const b = $('#sfx-toggle');
-  b.innerHTML = icon(Sfx.muted() ? 'volume-x' : 'volume-2', 16);
-  b.setAttribute('aria-label', Sfx.muted() ? '开启音效' : '关闭音效');
-  b.title = Sfx.muted() ? '开启音效' : '关闭音效';
+  const on = !!Store.settings.autoSpeak;
+  b.innerHTML = icon(on ? 'volume-2' : 'volume-x', 16);
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-label', on ? '关闭自动朗读' : '开启自动朗读');
+  b.title = on ? '关闭自动朗读' : '开启自动朗读';
 }
 
 /* ══ 对话页 ══ */
 function renderChat() {
+  loadStickers();                                   /* 表情包目录懒加载(只取一次) */
   const chars = Store.characters;
   if (!state.charId || !Store.char(state.charId)) state.charId = chars[0]?.id ?? null;
   const c = Store.char(state.charId);
@@ -135,14 +153,70 @@ function renderChat() {
   renderMessages();
 }
 
-function renderMessages() {
+const bubbleHTML = (m, i, arr) => {
+  if (m.role === 'error') return `<div class="bubble error">${esc(m.content)}${m.retryable ? ` · <a href="#" data-retry="${m.ts}" style="color:inherit">${icon('corner-down-left', 12)} 重试</a>` : ''}</div>`;
+  if (m.role === 'assistant' && m.streaming) return `<div class="bubble ai streaming"><span class="dots"><i></i><i></i><i></i></span></div>`;
+  if (m.role === 'assistant' && m.style === 'action') return `<div class="chat-action">${esc(m.content)}</div>`;   /* 动作：不进气泡的舞台指示 */
+  if (m.sticker) {
+    const hit = stickerByName(m.sticker);
+    if (hit) return `<div class="msg-row"><div class="bubble ai sticker-msg"><img class="sticker" src="assets/stickers/${encodeURIComponent(hit.file)}" alt="表情包：${esc(hit.tags.join('、'))}" loading="lazy"></div></div>`;
+    if (m.content) return `<div class="msg-row"><div class="bubble ai">${esc(m.content)}</div></div>`;   /* 目录已移除该图 → 文本兜底 */
+  }
+  const st = m.style && m.style !== 'normal' ? ` st-${esc(m.style)}` : '';
+  const isLast = arr && i === arr.length - 1;
+  const isUser = m.role === 'user';
+  const speak = !isUser && m.content && !m.streaming
+    ? `<button class="act" data-speak="${m.ts}" title="朗读">${icon(speaking?.ts === m.ts ? 'square' : 'volume-2', 13)}<span class="bl">${speaking?.ts === m.ts ? '停止' : '朗读'}</span></button>` : '';
+  const acts = !isUser && m.content && !m.streaming && !isLast
+    ? `<div class="msg-acts">${speak}<button class="act" data-copy="${m.ts}" title="复制">${icon('copy', 13)}<span class="bl">复制</span></button><button class="act" data-quote="${m.ts}" title="引用">${icon('message-circle', 13)}<span class="bl">引用</span></button></div>` : '';
+  return `<div class="msg-row${isUser ? ' user' : ''}"><div class="bubble ${isUser ? 'user' : 'ai'}${st}">${esc(m.content)}</div>${acts}</div>`;
+};
+
+/* ── TTS 朗读: 队列串行(上一个结束再播下一个) + 自动朗读开关; markdown 剥为纯文本 ── */
+let speaking = null;                                  /* { ts, audio, url } */
+const speakQ = [];                                    /* 待播 ts 队列 */
+const stripMd = (t) => String(t || '')
+  .replace(/```[\s\S]*?```/g, '（代码）')
+  .replace(/`([^`]*)`/g, '$1')
+  .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+  .replace(/[*_~#>|]/g, '').replace(/\n{2,}/g, '\n').trim();
+const ttsReady = () => !!((Store.settings.ttsModel || '').trim() && (Store.settings.ttsBaseUrl || Store.settings.baseUrl || '').trim());
+function enqueueSpeak(ts) { if (!speakQ.includes(ts)) { speakQ.push(ts); pumpSpeak(); } }
+function pumpSpeak() {
+  if (speaking) return;
+  const ts = speakQ.shift();
+  if (ts == null) return;
   const s = Store.session(state.charId, state.sessionId);
+  const m = s?.messages.find(x => x.ts === ts);
+  if (!m?.content) { pumpSpeak(); return; }
+  speaking = { ts };
+  renderMessages();
+  TTS.synth({ text: stripMd(m.content) }).then(({ url }) => {
+    if (speaking?.ts !== ts) { URL.revokeObjectURL(url); pumpSpeak(); return; }   /* 播放前被停止 */
+    const audio = new Audio(url);
+    speaking.audio = audio; speaking.url = url;
+    audio.onended = audio.onerror = () => { if (speaking?.ts === ts) { speaking = null; renderMessages(); pumpSpeak(); } };
+    audio.play();
+    renderMessages();
+  }).catch((e) => {
+    if (speaking?.ts === ts) speaking = null;
+    toast('朗读失败：' + e.message, true);
+    pumpSpeak();
+  });
+}
+function stopSpeak() {                                /* 手动停止: 清队列 */
+  speakQ.length = 0;
+  if (speaking?.audio) { try { speaking.audio.pause(); URL.revokeObjectURL(speaking.url); } catch {} }
+  speaking = null;
+}
+async function toggleSpeak(ts, btn) {
+  if (speaking?.ts === ts || speakQ.includes(ts)) { stopSpeak(); renderMessages(); return; }
+  enqueueSpeak(ts);
+}
+
+function renderMessages() {  const s = Store.session(state.charId, state.sessionId);
   const wrap = $('#messages');
-  wrap.innerHTML = (s?.messages ?? []).map(m => {
-    if (m.role === 'error') return `<div class="bubble error">${esc(m.content)}${m.retryable ? ` · <a href="#" data-retry="${m.ts}" style="color:inherit">${icon('corner-down-left', 12)} 重试</a>` : ''}</div>`;
-    if (m.role === 'assistant' && m.streaming) return `<div class="bubble ai streaming"><span class="dots"><i></i><i></i><i></i></span></div>`;
-    return `<div class="bubble ${m.role === 'user' ? 'user' : 'ai'}">${esc(m.content)}</div>`;
-  }).join('');
+  wrap.innerHTML = (s?.messages ?? []).map((m, i) => bubbleHTML(m, i, s?.messages ?? [])).join('');
   [...wrap.children].forEach(el => rise(el));   /* 消息体量不定, 不级联 */
   wrap.scrollTop = wrap.scrollHeight;
   stick.check(wrap);
@@ -159,6 +233,47 @@ const stick = {
   follow(scroll) { if (!this.up) scroll.scrollTop = scroll.scrollHeight; },
 };
 
+/* 自动增高（统一走 Motion）: auto 态测量解锁收缩, 归位后动画到目标高 */
+function sizeComposer(t) {
+  const prev = t.style.height;
+  t.style.height = 'auto';
+  const target = Math.min(t.scrollHeight, 160);
+  t.style.height = prev;
+  Motion.motion(t, { height: target, speed: 'fast' });
+}
+
+/* ── IM 式连发回复：结构化 JSON → 逐条弹出（打字点点间隔） ──
+   模型按 system prompt 约定输出 {"reply":{"messages":[{"text","style"}]}}；
+   非 JSON/字段缺失时整段降级为一条，对不支持结构化输出的端点兜底 */
+const REVEAL = { cap: 6, min: 500, per: 28, max: 1500 };   /* 逐条上限/弹出节奏 */
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const revealDelay = (t) => Math.min(REVEAL.max, REVEAL.min + (t?.length ?? 0) * REVEAL.per);
+
+function parseReplyParts(raw) {
+  const t = (raw || '').trim();
+  if (!t) return [];
+  try {
+    const j = LLM.extractJson(t);
+    const arr = j?.reply?.messages ?? j?.messages ?? (Array.isArray(j) ? j : null);
+    if (Array.isArray(arr)) {
+      const parts = arr
+        .map(x => {
+          if (typeof x === 'string') return { text: x, style: 'normal' };
+          const sticker = x && typeof x === 'object' && x.sticker ? stickerByName(x.sticker)?.file : null;
+          if (sticker) return { sticker, text: String(x?.text ?? '').trim(), style: 'sticker' };
+          const action = x && typeof x === 'object' && (x.action || x.style === 'action')
+            ? String(x.action ?? x.text ?? '').trim() : '';
+          if (action) return { action, style: 'action' };
+          return { text: String(x?.text ?? ''), style: String(x?.style || 'normal') };
+        })
+        .filter(p => (p.text && p.text.trim()) || p.sticker || p.action)
+        .slice(0, REVEAL.cap);
+      if (parts.length) return parts;
+    }
+  } catch { /* 落到整段一条 */ }
+  return [{ text: t, style: 'normal' }];
+}
+
 async function send() {
   const input = $('#composer');
   const text = input.value.trim();
@@ -169,51 +284,93 @@ async function send() {
   const charId = state.charId, sessionId = state.sessionId;
   const c = Store.char(charId), s = Store.session(charId, sessionId);
   Store.pushMessage(charId, sessionId, { role: 'user', content: text });
-  const aiMsg = Store.pushMessage(charId, sessionId, { role: 'assistant', content: '' });
+  const turnStart = s.messages.length;              /* 本轮起点：提炼只取本轮回复 */
+  Store.save();
   renderMessages();
 
   const ctrl = new AbortController();
   state.streaming = { charId, sessionId, ctrl };
   setComposerBusy(true);
   Sfx.play('send');
-  const scroll = $('#chat-scroll');
-  let firstDelta = true;
+  const wrap = $('#messages'), scroll = $('#chat-scroll');
+  const mine = () => state.streaming?.charId === charId && state.streaming?.sessionId === sessionId;
+  const dots = (thinking = false) => {              /* 打字点点(thinking=true 带「思考中」微光字): 仅当前正在看这个会话时挂载 */
+    if (!mine() || wrap.querySelector('.dots')) return;
+    wrap.insertAdjacentHTML('beforeend', thinking
+      ? '<div class="bubble ai streaming thinking"><span class="think">思考中</span><span class="dots"><i></i><i></i><i></i></span></div>'
+      : '<div class="bubble ai streaming"><span class="dots"><i></i><i></i><i></i></span></div>');
+    wrap.scrollTop = wrap.scrollHeight;
+  };
+  const undots = () => wrap.querySelector('.bubble.streaming')?.remove();
   try {
     const history = s.messages
-      .filter(m => m.role !== 'error' && !(m.role === 'assistant' && !m.content))
-      .slice(-16).map(m => ({ role: m.role, content: m.content }));
+      .filter(m => m.role !== 'error' && !(m.role === 'assistant' && !m.content && !m.sticker))
+      .slice(-24).map(m => ({ role: m.role, content: m.sticker ? `[发表了表情包：${m.sticker}]` : m.style === 'action' ? `[动作：${m.content}]` : m.content }));
+    const stk = Array.isArray(state.stickers) && state.stickers.length
+      ? `你可以发送表情包。可用表情包（文件名：标签）：\n` +
+        state.stickers.map(x => `- ${x.file}：${x.tags.join('/')}`).join('\n') +
+        `\n想发表情包时，在 messages 里输出 {"sticker":"文件名"}（可和文字条混排；表情包一般单独成条，一次最多 2 张）。不要发送列表以外的表情包。\n`
+      : '';
+    const fmt = '{"reply":{"messages":[{"text":"第一条","style":"normal"}' +
+      (stk ? ',{"sticker":"表情包文件名.gif"}' : '') +
+      ',{"action":"动作描述"},{"text":"第二条","style":"normal"}]}}';
     const sys = `你是「${c.name}」。人设：${c.persona}\n说话风格：${c.style || '自然'}\n` +
-      `当前性格特质（活跃）：${c.traits.filter(t => t.state === 'active').map(t => t.name).join('、') || '（尚未形成）'}\n保持角色一致性。`;
-    aiMsg.streaming = true; renderMessages();
-    await LLM.chatStream({
-      ...llmOpts(), messages: [{ role: 'system', content: sys }, ...history],
-      signal: ctrl.signal,
-      onDelta: (d) => {
-        if (firstDelta) { aiMsg.streaming = false; firstDelta = false; renderMessages(); Sfx.play('typing'); }
-        aiMsg.content += d;
-        if (state.streaming?.sessionId === sessionId) {
-          const last = wrap_lastBubble();
-          if (last) { last.textContent = aiMsg.content; stick.follow(scroll); }
-        }
-      },
-    });
-    if (!aiMsg.content) aiMsg.content = '（空回复）';
-    Sfx.play('receive');
+      `当前性格特质（活跃）：${c.traits.filter(t => t.state === 'active').map(t => t.name).join('、') || '（尚未形成）'}\n保持角色一致性。\n` +
+      `你正在模拟自然的即时通讯聊天。\n` +
+      `- 不要为了凑数量而拆分消息；当一个想法自然形成多个连续表达时，才拆成 2～4 条独立消息。\n` +
+      `- 短回答通常使用 1 条消息；较长回答可以自然地拆成多条。\n` +
+      `- 每条消息应该像真人在即时通讯软件中发送的一条消息，不要把一个完整句子机械地拆成多个消息。\n` +
+      `- {"action":"..."} 是角色动作/神态，不进气泡、独立显示（如「走上前」「低下头笑了笑」）；表达小动作或神态时使用，不要每条回复都带。\n` +
+      stk +
+      `只输出 JSON，格式：${fmt}，style 固定为 "normal"，不要输出 JSON 以外的任何内容。`;
+    dots(true);                                       /* 思考动画: 等待模型响应期间 */
+    const raw = await LLM.complete({ ...llmOpts(), messages: [{ role: 'system', content: sys }, ...history], signal: ctrl.signal, json: true });
+    undots();                                         /* 响应抵达: 思考态结束 → 逐条弹出间隙用打字点点 */
+    const parts = parseReplyParts(raw);
+    for (const p of parts) {
+      if (ctrl.signal.aborted) break;               /* 中途停止：已弹出的保留 */
+      dots();
+      await sleep(revealDelay(p.text));
+      undots();
+      const m = Store.pushMessage(charId, sessionId, p.sticker
+        ? { role: 'assistant', content: p.text, sticker: p.sticker }
+        : p.action
+          ? { role: 'assistant', content: p.action, style: 'action' }
+          : { role: 'assistant', content: p.text, style: p.style });
+      Store.save();
+      if (mine()) {                                 /* 切走时只写存储, 回来靠 renderChat 重载 */
+        const msgs = s.messages;
+        wrap.insertAdjacentHTML('beforeend', bubbleHTML(m, msgs.indexOf(m), msgs));
+        rise(wrap.lastElementChild);
+        stick.follow(scroll);
+      }
+      Sfx.play('receive');
+    }
+    if (!parts.length && !ctrl.signal.aborted) {
+      Store.pushMessage(charId, sessionId, { role: 'assistant', content: '（空回复）' });
+      Store.save();
+    }
   } catch (err) {
-    aiMsg.streaming = false;
-    if (err.name === 'AbortError') { aiMsg.content = aiMsg.content ? aiMsg.content + '\n（已停止）' : '（已停止）'; Sfx.play('stop'); }
+    if (err.name === 'AbortError') Sfx.play('stop');
     else {
-      aiMsg.role = 'error'; aiMsg.content = `请求失败：${err.message}`; aiMsg.retryable = true;
+      Store.pushMessage(charId, sessionId, { role: 'error', content: `请求失败：${err.message}`, retryable: true });
       Sfx.play('error');
     }
   } finally {
-    aiMsg.streaming = false;            /* 标志不落盘：中断后重开不应残留点点 */
+    undots();                                       /* 点点不落盘：中断后重开不应残留 */
     Store.save(); state.streaming = null; setComposerBusy(false);
     renderMessages();
-    if (aiMsg.role === 'assistant' && aiMsg.content) distillAsync(charId, text, aiMsg.content);
+    const aiText = s.messages.slice(turnStart).filter(m => m.role === 'assistant')
+      .map(m => m.sticker ? `[表情包：${m.sticker}]` : m.content).filter(Boolean).join('\n');
+    if (aiText) distillAsync(charId, text, aiText);
+    /* 自动朗读: 本轮 assistant 消息按序入队(上一个结束再播下一个) */
+    if (Store.settings.autoSpeak && ttsReady() && !ctrl.signal.aborted) {
+      s.messages.slice(turnStart)
+        .filter(m => m.role === 'assistant' && m.content && !m.sticker && m.style !== 'action')
+        .forEach(m => enqueueSpeak(m.ts));
+    }
   }
 }
-function wrap_lastBubble() { const all = $$('#messages .bubble.ai'); return all[all.length - 1]; }
 function setComposerBusy(b) {
   $('#send').style.display = b ? 'none' : '';
   $('#stop').style.display = b ? '' : 'none';
@@ -678,18 +835,24 @@ function deleteNodeById(id) {
 let ctxTarget = null;
 function showCtxMenu(x, y, node, world) {
   const m = $('#ctx-menu');
-  ctxTarget = { node, world };
+  ctxTarget = { node, world, sx: x, sy: y };
   m.innerHTML = node
     ? `<button data-act="edit">${icon('pencil', 14)} 编辑节点</button><button data-act="del" class="danger">${icon('trash', 14)} 删除节点</button>`
     : `<button data-act="new">${icon('square-plus', 14)} 新建空白节点</button><button data-act="relax">${icon('rotate-cw', 14)} 刷新星图</button>`;
   m.classList.add('on');
   const vw = $('#world-view').getBoundingClientRect();
+  /* 从出现位置生长: 右缘出现→origin 右上, 下缘出现→origin 左下(防翻转) */
+  m.style.transformOrigin = `${x - vw.left > vw.width / 2 ? 'right' : 'left'} ${y - vw.top > vw.height / 2 ? 'bottom' : 'top'}`;
+  EdgeGlow.collect();                                 /* 菜单按钮动态生成: 重新注册发光 */
   const mw = m.offsetWidth || 160, mh = m.offsetHeight || 80;
   m.style.left = Math.min(x - vw.left, vw.width - mw - 8) + 'px';
   m.style.top = Math.min(y - vw.top, vw.height - mh - 8) + 'px';
   Sfx.play('select');
 }
-function hideCtxMenu() { $('#ctx-menu').classList.remove('on'); ctxTarget = null; }
+function hideCtxMenu() {
+  $('#ctx-menu').classList.remove('on');              /* CSS visibility+opacity+scale 过渡收起 */
+  ctxTarget = null;
+}
 async function autoConnectNode(id) {                /* 新建节点后 AI 自动判断连线 */
   const n = worldNow()?.nodes.find(x => x.id === id); if (!n) return;
   const parsed = await aiJson(
@@ -714,11 +877,23 @@ function wireWorldEditor() {
   /* 右键/长按菜单动作 + 点击外部关闭 */
   $('#ctx-menu').addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b || !ctxTarget) return;
-    const { node, world } = ctxTarget;
+    const { node, sx, sy } = ctxTarget;
+    const worldNowAt = () => state.worldMap._toWorld({ clientX: sx, clientY: sy });   /* 点击瞬间实时换算: 视图若在菜单期间变动也不会漂移 */
     hideCtxMenu();
     if (b.dataset.act === 'new') {
-      const n = addNodeAt(world);                                /* 就地创建, 不进编辑器(右键节点可编辑) */
-      if (n) { toast('已新建节点，右键它可编辑'); if (Store.apiReady()) autoConnectNode(n.id); }
+      const n = addNodeAt(worldNowAt());                         /* 就地创建, 不进编辑器(右键节点可编辑) */
+      if (n) {
+        /* 最终锚定: setData 同步可能有位移, 用点击瞬间的屏幕坐标直接锚定星图副本+store */
+        const mapN = state.worldMap.nodes.find(x => x.id === n.id);
+        const target = state.worldMap._toWorld({ clientX: sx, clientY: sy });
+        if (mapN) { mapN.x = target.x; mapN.y = target.y; mapN.pinned = true; }
+        n.x = target.x; n.y = target.y; n.pinned = true;
+        state.worldMap.selected = n.id;
+        saveWorldGraph();
+        state.worldMap.setData(worldNow().nodes, worldNow().edges);
+        state.worldMap.selected = n.id;
+        toast('已新建节点，右键它可编辑'); if (Store.apiReady()) autoConnectNode(n.id);
+      }
     }
     else if (b.dataset.act === 'relax') {
       state.worldMap.relax();                       /* 视觉侧解钉+踢一脚 */
@@ -880,6 +1055,9 @@ function wireWorldEditor() {
 function renderSettings() {
   const s = Store.settings;
   $('#s-base').value = s.baseUrl; $('#s-key').value = s.apiKey; $('#s-model').value = s.model;
+  $('#s-tts-base').value = s.ttsBaseUrl; $('#s-tts-key').value = s.ttsApiKey;
+  $('#s-tts-model').value = s.ttsModel; $('#s-tts-voice').value = s.ttsVoice;
+  $('#s-sfx').checked = !Sfx.muted();
   $('#s-distill').checked = !!s.autoDistill;
   $('#conn-result').textContent = '';
 }
@@ -912,8 +1090,10 @@ function bind() {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); n.click(); }
   }));
   $('#sfx-toggle').addEventListener('click', () => {
-    Sfx.setMuted(!Sfx.muted()); renderSfxToggle();
-    if (!Sfx.muted()) Sfx.play('check');
+    Store.saveSettings({ autoSpeak: !Store.settings.autoSpeak });
+    if (!Store.settings.autoSpeak) stopSpeak();
+    renderSfxToggle(); Sfx.play('select');
+    toast(Store.settings.autoSpeak ? '自动朗读已开启' : '自动朗读已关闭');
   });
   $('#api-chip').addEventListener('click', () => {
     if (!Store.apiReady()) { location.hash = '#/settings'; return; }
@@ -931,14 +1111,6 @@ function bind() {
   /* 对话 */
   $('#chat-scroll').addEventListener('scroll', (e) => stick.check(e.target));
   $('#float-bottom').addEventListener('click', () => { const s = $('#chat-scroll'); stick.up = false; s.scrollTop = s.scrollHeight; stick.check(s); });
-  /* 自动增高（统一走 Motion）: auto 态测量解锁收缩, 归位后动画到目标高 */
-  const sizeComposer = (t) => {
-    const prev = t.style.height;
-    t.style.height = 'auto';
-    const target = Math.min(t.scrollHeight, 160);
-    t.style.height = prev;
-    Motion.motion(t, { height: target, speed: 'fast' });
-  };
   $('#composer').addEventListener('input', (e) => sizeComposer(e.target));
   $('#composer').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
@@ -970,15 +1142,43 @@ function bind() {
     if (item) { state.charId = item.dataset.cid; state.sessionId = null; renderChat(); closeDrawer(); }
   });
   $('#messages').addEventListener('click', (e) => {
+    const sp = e.target.closest('[data-speak]');
+    if (sp) { toggleSpeak(+sp.dataset.speak, sp); return; }
+    const cp = e.target.closest('[data-copy]');
+    if (cp) {
+      const s = Store.session(state.charId, state.sessionId);
+      const m = s?.messages.find(x => x.ts === +cp.dataset.copy);
+      navigator.clipboard?.writeText(stripMd(m?.content) || '').then(() => {
+        cp.innerHTML = icon('check', 13) + '<span class="bl">已复制</span>';
+        setTimeout(() => { cp.innerHTML = icon('copy', 13) + '<span class="bl">复制</span>'; }, 1400);
+      }).catch(() => toast('复制失败', true));
+      return;
+    }
+    const qt = e.target.closest('[data-quote]');
+    if (qt) {
+      const s = Store.session(state.charId, state.sessionId);
+      const m = s?.messages.find(x => x.ts === +qt.dataset.quote);
+      if (m) {
+        const t = $('#composer');
+        t.value = `> ${stripMd(m.content).slice(0, 120)}\n`;
+        t.focus(); t.dispatchEvent(new Event('input', { bubbles: true }));
+        t.setSelectionRange(t.value.length, t.value.length);
+      }
+      return;
+    }
     const r = e.target.closest('[data-retry]');
     if (!r) return;
     const s = Store.session(state.charId, state.sessionId);
     const idx = s.messages.findIndex(m => m.ts === +r.dataset.retry);
-    if (idx > 0 && s.messages[idx - 1].role === 'user') {
-      const userText = s.messages[idx - 1].content;
-      s.messages.splice(idx - 1, 2); Store.save();   /* 宁少删不误删：按相邻成对删除 */
-      renderMessages();
-      $('#composer').value = userText; send();
+    if (idx > 0) {
+      let u = idx - 1;
+      while (u > 0 && s.messages[u].role !== 'user') u--;   /* 连发/动作中段报错 → 回溯整轮 */
+      if (s.messages[u]?.role === 'user') {
+        const userText = s.messages[u].content;
+        s.messages.splice(u, idx - u + 1); Store.save();    /* 删本轮 user..error 全部, 整轮重新生成 */
+        renderMessages();
+        $('#composer').value = userText; send();
+      }
     }
   });
 
@@ -1099,7 +1299,9 @@ function bind() {
 
   /* 设置 */
   $('#s-save').addEventListener('click', () => {
-    Store.saveSettings({ baseUrl: $('#s-base').value, apiKey: $('#s-key').value, model: $('#s-model').value, autoDistill: $('#s-distill').checked });
+    Store.saveSettings({ baseUrl: $('#s-base').value, apiKey: $('#s-key').value, model: $('#s-model').value, autoDistill: $('#s-distill').checked,
+      ttsBaseUrl: $('#s-tts-base').value, ttsApiKey: $('#s-tts-key').value, ttsModel: $('#s-tts-model').value, ttsVoice: $('#s-tts-voice').value });
+    Sfx.setMuted(!$('#s-sfx').checked);
     toast('已保存'); Sfx.play('check'); renderChat();
   });
   $('#s-test').addEventListener('click', testConn);
@@ -1175,7 +1377,7 @@ const EdgeGlow = (() => {
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
   const SELECTOR = '.card, .session-item, .composer-shell, .resident, .float-bottom, '
     + '.btn, .iconbtn, .bubble, .node-detail, .banner, .api-chip, .side-foot .nav-item, .nav, '
-    + '.world-card, .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .seg-btn, .we-rtbar button';
+    + '.world-card, .world-detail, .world-intro, .we-md, .we-preview, .we-panel, .seg-btn, .we-rtbar button, .ctx-menu button';
   const REACH = 90;                 // 感应半径(px), 距边缘 90px 内开始渐亮
   let targets = [], raf = 0, mx = -1e4, my = -1e4;
 

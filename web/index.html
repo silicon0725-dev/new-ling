@@ -24,8 +24,9 @@
   <div class="nav-item" data-page="territory" data-icon="house" tabindex="0"><span class="nav-label">领地</span></div>
   <div class="nav-item" data-page="starmap" data-icon="sparkles" tabindex="0"><span class="nav-label">星图</span></div>
 </nav>
-<button class="iconbtn sfx-float" id="sfx-toggle" aria-label="音效开关" title="音效开关"></button>
+<button class="iconbtn sfx-float" id="sfx-toggle" aria-label="自动朗读" title="自动朗读"></button>
 
+<div id="top-feather" aria-hidden="true"></div>
 <div class="app">
 
   <!-- 全局侧边栏：头部(ling) + 会话/角色 + 底部(设置 + API 状态) -->
@@ -54,8 +55,8 @@
       <div class="chat-scroll" id="chat-scroll">
         <div class="chat-inner" id="messages"></div>
       </div>
-      <div class="float-bottom" id="float-bottom">↓ 回到底部</div>
       <div class="composer">
+        <button type="button" class="float-bottom" id="float-bottom" data-icon="arrow-down" data-icon-size="16" aria-label="回到底部"></button>
         <div class="composer-inner">
           <div class="composer-shell">
             <textarea class="composer-input" id="composer" placeholder="和角色说点什么……"></textarea>
@@ -208,10 +209,25 @@
       <div class="field"><label>对话后自动提炼记忆与特质</label>
         <label style="display:flex; gap:8px; align-items:center; text-transform:none; letter-spacing:0; font-size:var(--fs-sm); color:var(--text-2)">
           <input type="checkbox" id="s-distill" style="width:auto"> 开启（每次回复后追加一次提炼调用）</label></div>
+      <div class="field"><label>界面音效</label>
+        <label style="display:flex; gap:8px; align-items:center; text-transform:none; letter-spacing:0; font-size:var(--fs-sm); color:var(--text-2)">
+          <input type="checkbox" id="s-sfx" style="width:auto"> 开启（点击/发送/接收等界面提示音）</label></div>
       <div class="row">
         <button class="btn primary" id="s-save">保存</button>
         <button class="btn" id="s-test">测试连通性</button>
         <span id="conn-result"></span>
+      </div>
+
+      <h2>语音合成 TTS（可选 · 朗读角色回复）</h2>
+      <div class="field"><label>TTS BaseURL（OpenAI 兼容 /audio/speech；留空 = 使用上方 BaseURL）</label>
+        <input class="input" id="s-tts-base" placeholder="https://api.example.com/v1"></div>
+      <div class="field"><label>TTS API Key（留空 = 使用上方 Key）</label>
+        <input class="input" id="s-tts-key" type="password" placeholder="sk-…（可选）"></div>
+      <div class="row">
+        <div class="field" style="flex:1"><label>TTS 模型</label>
+          <input class="input" id="s-tts-model" placeholder="例如 tts-1 / fish-speech-1.5 / CosyVoice2"></div>
+        <div class="field" style="flex:1"><label>音色 voice</label>
+          <input class="input" id="s-tts-voice" placeholder="例如 alloy / female"></div>
       </div>
 
       <h2>数据（本地 localStorage）</h2>
@@ -315,6 +331,7 @@
 <script src="js/store.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/llm.js"></script>
+<script src="js/tts.js"></script>
 <script src="js/filekit.js"></script>
 <script src="js/motion.js"></script>
 <script src="js/starmap.js"></script>

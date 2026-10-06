@@ -72,12 +72,15 @@ const LLM = (() => {
     return full;
   }
 
-  /* 非流式（铸造/提炼/近况） */
-  async function complete({ baseUrl, apiKey, model, messages, signal }) {
+  /* 非流式（对话/铸造/提炼/近况）。json=true 时申请 response_format；
+     端点不支持(400)则去掉该字段降级重试一次（提示词里已含 JSON 约定，仍可稳定出 JSON） */
+  async function complete({ baseUrl, apiKey, model, messages, signal, json }) {
+    const body = { model, messages };
+    if (json) body.response_format = { type: 'json_object' };
     const res = await fetch(endpoint(baseUrl, '/chat/completions'), {
-      method: 'POST', headers: headers(apiKey), signal,
-      body: JSON.stringify({ model, messages }),
+      method: 'POST', headers: headers(apiKey), signal, body: JSON.stringify(body),
     });
+    if (!res.ok && json && res.status === 400) return complete({ baseUrl, apiKey, model, messages, signal });
     if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
     return (await res.json()).choices?.[0]?.message?.content ?? '';
   }
